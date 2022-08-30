@@ -6,13 +6,13 @@
 #include <clientprefs>
 #include <ssh>
 #include <smlib>
+#include <tf2_stocks>
 #undef REQUIRE_PLUGIN
 #include <adminmenu>
 
 
-
 //Used to easily access my cvars out of an array.
-#define PLUGIN_VERSION "1.3.5"
+#define PLUGIN_VERSION "1.3.6"
 enum {
 	ENABLED = 0,
 	ANTIOVERLAP,
@@ -55,9 +55,10 @@ char g_arrSprayID[MAXPLAYERS + 1][32];
 char g_arrMenuSprayID[MAXPLAYERS + 1][32];
 float g_fSprayVector[MAXPLAYERS+1][3];
 int g_arrSprayTime[MAXPLAYERS + 1];
-char g_sAuth[MAXPLAYERS+1][128];
+char g_sAuth[MAXPLAYERS+1][512];
 bool g_bSpraybanned[MAXPLAYERS+1];
 Database g_Database;
+float NormalForSpray[MAXPLAYERS+1][3];
 
 //Our Timer that will be initialized later
 Handle g_hSprayTimer;
@@ -86,7 +87,7 @@ Handle g_hUnbanForward;
 bool g_bLate;
 
 //Used for the glow that is applied when tracing a spray
-int g_PrecacheRedGlow;
+//int g_PrecacheRedGlow;
 
 //The plugin info :D
 public Plugin myinfo = {
@@ -216,11 +217,9 @@ public void OnPluginStart() {
 	SQL_Connector();
 }
 
-//When the map starts we want to create timers, cache our glow effect, and clear any info that may have decided to stick around.
+//When the map starts we want to create timers, and clear any info that may have decided to stick around.
 public void OnMapStart() {
 	CreateTimers();
-
-	g_PrecacheRedGlow = PrecacheModel("sprites/redglow1.vmt");
 
 	for (int i = 1; i <= MaxClients; i++) {
 		ClearVariables(i);
@@ -228,20 +227,19 @@ public void OnMapStart() {
 }
 
 //If sm_ssh_global = 0 then we want to get rid of a players spray when they leave.
-public void OnClientDisconnect(int client) {
-	if (!g_arrCVars[GLOBAL].BoolValue) {
+public void OnClientDisconnect(int client)
+{
+	if (!g_arrCVars[GLOBAL].BoolValue)
+	{
 		ClearVariables(client);
 	}
 }
 
 //When a client joins we need to 1: default his spray to 0 0 0. 2: Check in the database if he is spray banned.
-public void OnClientPutInServer(int client) {
+public void OnClientPutInServer(int client)
+{
 	g_fSprayVector[client] = ZERO_VECTOR;
 	g_bSpraybanned[client] = false;
-
-	if (g_Database) {
-		CheckBan(client);
-	}
 }
 
 //If you unload the admin menu, we don't want to keep using it :/
@@ -257,13 +255,16 @@ public void OnLibraryRemoved(const char[] name) {
  ******************************************************************************************/
 
 int g_iSprayTarget[MAXPLAYERS+1] = {-1, ...};
+
 //0 is last look time, 1 is last actual hud text time
 float g_fSprayTraceTime[MAXPLAYERS + 1][2];
 
 //Handles tracing sprays to the HUD or hint message
-public Action CheckAllTraces(Handle hTimer) {
-	if (!GetClientCount(true)) {
-		return;
+Action CheckAllTraces(Handle hTimer)
+{
+	if (!GetClientCount(true))
+	{
+		return Plugin_Continue;
 	}
 
 	char strMessage[128];
@@ -271,9 +272,12 @@ public Action CheckAllTraces(Handle hTimer) {
 	float vecPos[3];
 	bool bHudParamsSet = false;
 	float flGameTime = GetGameTime();
+
 	//Pray for the processor - O(n^2) (but better now)
-	for (int client = 1; client <= MaxClients; client++) {
-		if (!IsValidClient(client) || IsFakeClient(client)) {
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (!IsValidClient(client) || IsFakeClient(client))
+		{
 			g_iSprayTarget[client] = -1;
 			continue;
 		}
@@ -292,61 +296,108 @@ public Action CheckAllTraces(Handle hTimer) {
 		}
 
 		//Make sure you're looking at a valid location.
-		if (!GetClientEyeEndLocation(client, vecPos)) {
+		if (!GetClientEyeEndLocation(client, vecPos))
+		{
 			ClearHud(client, hudType, flGameTime);
 			continue;
 		}
 
-		//Do you REALLY have full access?
-		bool bFullAccess = CheckCommandAccess(client, "ssh_hud_access_full", ADMFLAG_GENERIC, true);
-		if (!bFullAccess && !CheckCommandAccess(client, "ssh_hud_access", 0, true)) {
-			continue;
-		}
+		////Let's check if you can trace admins
+		//bool bTraceAdmins = CheckCommandAccess(client, "ssh_hud_can_trace_admins", 0, true);
+		// get closest spray
 
-		//Let's check if you can trace admins
-		bool bTraceAdmins = CheckCommandAccess(client, "ssh_hud_can_trace_admins", 0, true);
+		//int target = -1;
+		//for (int i = 1; i <= MaxClients; i++)
+		//{
+		//    if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue)
+		//    {
+		//        target = i;
+		//    }
+		//}
 		int target = -1;
-		for (int a = 1; a <= MaxClients; a++) {
-			if (GetVectorDistance(vecPos, g_fSprayVector[a]) <= g_arrCVars[MAXDIS].FloatValue) {
-				target = a;
-				break;
+		for (int curcl = 1; curcl <= MaxClients; curcl++)
+		{
+			// dist between our mouse and this spray
+			float dist = GetVectorDistance(vecPos, g_fSprayVector[curcl]);
+			float curshortestdist;
+			if
+			(
+				// our cvar dist
+				dist <= g_arrCVars[MAXDIS].FloatValue
+				&&
+				// dist between our mouse and our last target
+				dist > curshortestdist
+			)
+			{
+				target = curcl;
+				curshortestdist = dist;
+				continue;
 			}
 		}
-		//Lets just figure out what target we're looking at?
-		if (!IsValidClient(target)) {
+
+		// Lets just figure out what target we're looking at?
+		if (!IsValidClient(target))
+		{
 			ClearHud(client, hudType, flGameTime);
 			continue;
 		}
 
-		//Check if you're an admin.
-		bool bTargetIsAdmin = CheckCommandAccess(target, "ssh_hud_is_admin", ADMFLAG_GENERIC, true);
-		if (!bTraceAdmins && bTargetIsAdmin) {
-			ClearHud(client, hudType, flGameTime);
-			continue;
-		}
+		////Check if you're an admin.
+		//bool bTargetIsAdmin = CheckCommandAccess(target, "ssh_hud_is_admin", ADMFLAG_GENERIC, true);
+		//if (!bTraceAdmins && bTargetIsAdmin) {
+		//    ClearHud(client, hudType, flGameTime);
+		//    continue;
+		//}
 
-		if (CheckForZero(g_fSprayVector[target])) {
+		if (CheckForZero(g_fSprayVector[target]))
+		{
 			ClearHud(client, hudType, flGameTime);
 			continue;
 		}
 
 		//Generate the text that is to be shown on your screen.
-		FormatEx(strMessage, sizeof strMessage, "Sprayed by:\n%s", bFullAccess ? g_sAuth[target] : g_arrSprayName[target]);
+		FormatEx(strMessage, sizeof strMessage, "Sprayed by:\n%s", g_sAuth[target]);
+
+		// check if this spray is too close to another spray
+		for (int i = 1; i <= MaxClients; i++)
+		{
+			if (IsValidClient(i) && i != client && !CheckForZero(g_fSprayVector[i]))
+			{
+				float spraydist = GetVectorDistance(g_fSprayVector[client], g_fSprayVector[i]);
+				if (spraydist <= 16)
+				{
+					FormatEx(strMessage, sizeof(strMessage), "Sprays are too close together to determine owner!");
+				}
+				else if (spraydist <= 128)
+				{
+					strMessage[0] = '\0';
+					// Generate the text that is to be shown on your screen.
+					FormatEx(strMessage, sizeof(strMessage), "Sprayed by:\n%s\n(showing tracebox for spray)", g_sAuth[target]);
+					showTraceSquare(g_fSprayVector[target], target, client);
+				}
+			}
+		}
 
 
-		switch (hudType) {
-			case 1: {
+		switch (hudType)
+		{
+			case 1:
+			{
 				Client_PrintKeyHintText(client, strMessage);
 			}
 			//This is annoying af. Need to find a way to fix it.
-			case 2: {
+			case 2:
+			{
 				Client_PrintHintText(client, strMessage);
 			}
-			case 3: {
+			case 3:
+			{
 				PrintCenterText(client, strMessage);
 			}
-			case 4: {
-				if (!bHudParamsSet) {
+			case 4:
+			{
+				if (!bHudParamsSet)
+				{
 					bHudParamsSet = true;
 					//15s sounds reasonable
 					//the color tends to get weird if you don't set it different each tick
@@ -363,6 +414,26 @@ public Action CheckAllTraces(Handle hTimer) {
 			}
 		}
 	}
+
+	return Plugin_Continue;
+}
+
+bool GetNormalAtPoint(float vec[3], int client)
+{
+	float clangles[3];
+	GetClientEyeAngles(client, clangles);
+
+	Handle hTraceRay = TR_TraceRayEx(vec, clangles, MASK_SHOT, RayType_Infinite);
+
+	if (TR_DidHit(hTraceRay))
+	{
+		TR_GetPlaneNormal(hTraceRay, NormalForSpray[client]);
+
+		delete hTraceRay;
+
+		return true;
+	}
+	return false;
 }
 
 void ClearHud(int client, int hudType, float gameTime) {
@@ -389,15 +460,6 @@ void ClearHud(int client, int hudType, float gameTime) {
 
 		g_iSprayTarget[client] = -1;
 	}
-}
-
-bool UserCanTarget(int client, int target)
-{
-	AdminId clientAdm = GetUserAdmin(client);
-	if (clientAdm != INVALID_ADMIN_ID && IsClientInGame(target)) {
-		return clientAdm.CanTarget(GetUserAdmin(target));
-	}
-	return true;
 }
 
 /******************************************************************************************
@@ -449,7 +511,6 @@ public void OnAdminMenuCreated(Handle aTopMenu) {
 
 	menu_category = topmenu.AddCategory("Spray Commands", CategoryHandler);
 }
-
 /******************************************************************************************
  *                               SQL METHODS FOR SPRAY BANS                               *
  ******************************************************************************************/
@@ -558,8 +619,6 @@ public void sqlQuery_CheckBan(Database db, DBResultSet results, const char[] err
 	}
 }
 
-
-
 /******************************************************************************************
  *                           OUR HOOKS :D TO ACTUALLY DO STUFF                            *
  ******************************************************************************************/
@@ -629,6 +688,8 @@ public Action Player_Decal(const char[] name, const int[] clients, int count, fl
 			Format(g_sAuth[client], sizeof g_sAuth[], "%s%s(%s)", g_sAuth[client], g_arrCVars[AUTH].IntValue & (1|2) ? "\n" : "", IP);
 		}
 	}
+
+	GetNormalAtPoint(g_fSprayVector[client], client);
 
 	//Now we're done here.
 	return Plugin_Continue;
@@ -729,9 +790,6 @@ public Action Command_Sprayban(int client, int args) {
 	int target = FindTarget(client, arg1);
 
 	if (target == -1) {
-		return Plugin_Handled;
-	}
-	if (!UserCanTarget(client, target)) {
 		return Plugin_Handled;
 	}
 
@@ -876,7 +934,7 @@ public int MenuHandler_SprayUnban(Menu menu, MenuAction action, int param1, int 
 }
 
 //What is called when you run !sm_sprayunban
-public Action Command_Sprayunban(int client, int args) {
+Action Command_Sprayunban(int client, int args) {
 	if (!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
@@ -948,7 +1006,7 @@ public void RunUnSprayBan(int client, int target) {
  ******************************************************************************************/
 
  //What is called to display the Options Menu
- public void DisplayListOptionsMenu(int client) {
+ void DisplayListOptionsMenu(int client) {
 	Menu menu = new Menu(MenuHandler_ListOptions);
 	menu.SetTitle("What Spray-Banned Clients to you wish to list?");
 
@@ -961,7 +1019,7 @@ public void RunUnSprayBan(int client, int target) {
  }
 
  //Menu Handler for the Options Menu
-public int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2) {
+int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
 			char choice[32];
@@ -985,7 +1043,7 @@ public int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int
 }
 
 //What happens when you select to list currently connected spray banned players?
-public void AdminMenu_SprayBans(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
+void AdminMenu_SprayBans(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
 			FormatEx(buffer, maxlength, "Spray Ban List");
@@ -1013,7 +1071,7 @@ public Action Command_Spraybans(int client, int args) {
 }
 
 //Display the currently connected spray banned players.
-public void DisplaySprayBans(int client) {
+void DisplaySprayBans(int client) {
 	Menu menu = new Menu(MenuHandler_SprayBans);
 	menu.SetTitle(
 		"----------------------------------------------\n"
@@ -1059,7 +1117,7 @@ public void DisplaySprayBans(int client) {
 }
 
 //Menu HAndler for the spray bans menu
-public int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int param2) {
+int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
 			if (!CheckCommandAccess(param1, "sm_sprayunban", ADMFLAG_UNBAN)) {
@@ -1108,7 +1166,7 @@ public int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int p
 }
 
 //Menu HAndler for the un-banning part of the list.
-public int MenuHandler_Spraybans_Ban(Menu menu, MenuAction action, int param1, int param2) {
+int MenuHandler_Spraybans_Ban(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
 			char info[32];
@@ -1138,7 +1196,7 @@ public int MenuHandler_Spraybans_Ban(Menu menu, MenuAction action, int param1, i
 
 //What is called to list all the spray bans there are in yoru database
 //public void AllSprayBansCallback(Handle owner, Handle hndl, const char[] error, any data) {
-public void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, any data) {
+void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, any data) {
 	if (!db || !results || error[0]) {
 		LogError("SQL error in Listing All Spray Bans: %s", error);
 		return;
@@ -1313,14 +1371,6 @@ public Action Command_OfflineSprayban(int client, int args) {
 		return Plugin_Handled;
 	}
 
-	AdminId targetAdm = FindAdminByIdentity("steam", auth);
-	if (targetAdm != INVALID_ADMIN_ID) {
-		AdminId clientAdm = GetUserAdmin(client);
-		if (!clientAdm.CanTarget(targetAdm)) {
-			return Plugin_Handled;
-		}
-	} 
-
 	char targetName[MAX_NAME_LENGTH];
 	FormatEx(targetName, MAX_NAME_LENGTH, "<unknown>");
 
@@ -1487,6 +1537,8 @@ public int Native_BanClient(Handle plugin, int numParams) {
 	g_bSpraybanned[client] = true;
 
 	PrintToChat(client, "\x04[Super Spray Handler]\x01 You've been spray banned.");
+
+	return 0;
 }
 
 //Native to un-sprayban a client.
@@ -1504,7 +1556,7 @@ public int Native_UnbanClient(Handle plugin, int numParams) {
 	char auth[32];
 	if (!GetClientAuthId(client, AuthId_Steam2, auth, sizeof auth)) {
 		// Should probably notify client calling native.
-		return;
+		return 0;
 	}
 
 	char sQuery[256];
@@ -1517,6 +1569,8 @@ public int Native_UnbanClient(Handle plugin, int numParams) {
 	g_bSpraybanned[client] = false;
 
 	PrintToChat(client, "\x04[Super Spray Handler]\x01 You've been spray unbanned.");
+
+	return 0;
 }
 
 //Native to check if a client is spray banned.
@@ -1563,15 +1617,13 @@ public Action Command_TraceSpray(int client, int args) {
 	float vecPos[3];
 
 	if (GetClientEyeEndLocation(client, vecPos)) {
-	 	for (int i = 1; i <= MaxClients; i++) {
-			if (!UserCanTarget(client, i)) {
-				continue;
-			}
+		for (int i = 1; i <= MaxClients; i++) {
 			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue) {
 				int time = RoundFloat(GetGameTime()) - g_arrSprayTime[i];
 
 				PrintToChat(client, "[SSH] %T", "Spray By", client, g_arrSprayName[i], g_arrSprayID[i], time);
-				GlowEffect(client, g_fSprayVector[i], 2.0, 0.3, 255, g_PrecacheRedGlow);
+				//GlowEffect(client, g_fSprayVector[i], 2.0, 0.3, 255, g_PrecacheRedGlow);
+				showTraceSquare(g_fSprayVector[i], i, client);
 				PunishmentMenu(client, i);
 
 				return Plugin_Handled;
@@ -1582,6 +1634,296 @@ public Action Command_TraceSpray(int client, int args) {
 	PrintToChat(client, "[SSH] %T", "No Spray", client);
 
 	return Plugin_Handled;
+}
+
+void showTraceSquare(float vec[3], int client, int lookingclient)
+{
+	// get normal angle for this spray
+	float vnormal[3];
+	vnormal = NormalForSpray[client];
+
+	// we set teamcolor here, so spray box glows the clients team color
+	int teamcolor[4];
+	TFTeam team = TF2_GetClientTeam(client);
+
+	if (team == TFTeam_Red)
+	{
+		teamcolor = {255, 128, 128, 128};
+	}
+	else if (team == TFTeam_Blue)
+	{
+		teamcolor = {128, 128, 255, 128};
+	}
+	else
+	{
+		teamcolor = {255, 255, 255, 128};
+	}
+	// get src world pos of spray
+	float spraypos[3];
+	spraypos = vec;
+
+	// not a perfectly vertical wall OR on the ground - draw a box
+	if (vnormal[2] != 0.0)
+	{
+		// 64 unit^3 cube
+		float mins[3] = {-32.0, -32.0, -32.0};
+		float maxs[3] = {32.0, 32.0, 32.0};
+
+		// add cube vec to our pos to get the worldpos of our cube minmaxs
+		AddVectors(spraypos, mins, mins);
+		AddVectors(spraypos, maxs, maxs);
+
+		// send the box
+		TE_SendBeamBox
+		(
+			mins,                                       // upper corner
+			maxs,                                       // lower corner
+			PrecacheModel("sprites/laser.vmt", true),   // model index
+			PrecacheModel("sprites/laser.vmt", true),   // halo index
+			0,                                          // startfame
+			1,                                          // framerate
+			0.5,                                        // lifetime
+			1.0,                                        // Width
+			1.0,                                        // endwidth
+			1,                                          // fadelength
+			1.0,                                        // amplitude
+			teamcolor,                                  // color
+			1,                                          // speed
+			lookingclient                               // client to send to
+		);
+		return;
+
+	}
+
+    /*
+
+          sprays are 64x64
+
+                 64
+        tleft --------- tright
+          |       |       |
+          |       | 32    |
+          |       |   32  |
+ vleft -> *       o-------* <- vright
+          |       ^       |
+          |    spraypos   |
+        bleft --------- bright
+
+    dist from center of spray is sqrt(2048) ftr because pythag. theorum
+
+    the normal vector vnormal is sticking OUT from spraypos in 3d but i'm not drawing that in a code comment
+
+    */
+
+	// normalize our normal vector - that is, a vector perpendicular to the plane of the wall this spray is on
+	NormalizeVector(vnormal, vnormal);
+	// scale it so we have a 64x64 square
+	ScaleVector(vnormal, 32.0);
+
+	// get a vector perpendicular to our normal, aka a vector on the plane
+	// this one happens to be always right because we handle z != 0 earlier
+	float vright[3];
+	vright[0] = -vnormal[1];
+	vright[1] = vnormal[0];
+	vright[2] = vnormal[2];
+
+	//float normal[3];
+	//float right[3];
+	//float left[3];
+
+	// we're gonna make a left vector by negativing our right vector
+	float vleft[3];
+	// negate our vector
+	NegateVector(vright);
+	// assign it
+	vleft = vright;
+	// uninvert it because sourcemod is fucking moronic
+	NegateVector(vright);
+
+	// top left, top right, bottom left, bottom right, geometric vector variables
+	float tl_v[3];
+	float tr_v[3];
+	float br_v[3];
+	float bl_v[3];
+
+	// set up our square corners
+	tl_v    = vleft;
+	tl_v[2] = vleft[2] + 32.0;
+	tr_v    = vright;
+	tr_v[2] = vright[2] + 32.0;
+
+	bl_v    = vleft;
+	bl_v[2] = vleft[2] - 32.0;
+	br_v    = vright;
+	br_v[2] = vright[2] - 32.0;
+
+	// our ACTUAL coords
+	float tl[3];
+	float tr[3];
+	float br[3];
+	float bl[3];
+
+
+	// add our vectors to the spray pos
+	AddVectors(spraypos, tl_v, tl);
+	AddVectors(spraypos, tr_v, tr);
+	AddVectors(spraypos, br_v, br);
+	AddVectors(spraypos, bl_v, bl);
+
+
+	// and we're in buisness!
+	TE_SendBeamSq
+	(
+	tl,
+	tr,
+	br,
+	bl,
+	PrecacheModel("sprites/laser.vmt", true),   // model index
+	PrecacheModel("sprites/laser.vmt", true),   // halo index
+	0,                                          // startfame
+	1,                                          // framerate
+	0.5,                                        // lifetime
+	2.0,                                        // Width
+	2.0,                                        // endwidth
+	1,                                          // fadelength
+	1.0,                                        // amplitude
+	teamcolor,                                  // color
+	1,                                          // speed
+	lookingclient                               // client to send to
+	);
+}
+
+// send a square with te_beams
+void TE_SendBeamSq
+(
+	float tleft[3],
+	float tright[3],
+	float bright[3],
+	float bleft[3],
+	int ModelIndex,
+	int HaloIndex,
+	int StartFrame,
+	int FrameRate,
+	float Life,
+	float Width,
+	float EndWidth,
+	int FadeLength,
+	float Amplitude,
+	const int Color[4],
+	int Speed,
+	int client
+)
+{
+	// yeah it's a square
+	TE_SetupBeamPoints(tleft, tright, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tright, bright, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(bright, bleft, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(bleft, tleft, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+}
+
+/* debug stock for sending a normal
+void TE_SendBeamNormal
+(
+	float origin[3],
+	float normal[3],
+	float unnormal[3],
+	int ModelIndex,
+	int HaloIndex,
+	int StartFrame,
+	int FrameRate,
+	float Life,
+	float Width,
+	float EndWidth,
+	int FadeLength,
+	float Amplitude,
+	const int Color[4],
+	int Speed,
+	int client
+)
+{
+	// yeah it's a square
+	TE_SetupBeamPoints(origin, normal, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, {0, 0, 255, 255}, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(origin, unnormal, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, {255, 0, 255, 255}, Speed);
+	TE_SendToClient(client);
+}
+*/
+
+// just a stupid "send beam box" stock, i didn't write this
+stock void TE_SendBeamBox
+(
+	float uppercorner[3],
+	const float bottomcorner[3],
+	int ModelIndex,
+	int HaloIndex,
+	int StartFrame,
+	int FrameRate,
+	float Life,
+	float Width,
+	float EndWidth,
+	int FadeLength,
+	float Amplitude,
+	const int Color[4],
+	int Speed,
+	int client
+)
+{
+	// Create the additional corners of the box
+	float tc1[3];
+	AddVectors(tc1, uppercorner, tc1);
+	tc1[0] = bottomcorner[0];
+
+	float tc2[3];
+	AddVectors(tc2, uppercorner, tc2);
+	tc2[1] = bottomcorner[1];
+
+	float tc3[3];
+	AddVectors(tc3, uppercorner, tc3);
+	tc3[2] = bottomcorner[2];
+
+	float tc4[3];
+	AddVectors(tc4, bottomcorner, tc4);
+	tc4[0] = uppercorner[0];
+
+	float tc5[3];
+	AddVectors(tc5, bottomcorner, tc5);
+	tc5[1] = uppercorner[1];
+
+	float tc6[3];
+	AddVectors(tc6, bottomcorner, tc6);
+	tc6[2] = uppercorner[2];
+
+	// Draw all the edges
+	TE_SetupBeamPoints(uppercorner, tc1, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(uppercorner, tc2, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(uppercorner, tc3, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc6, tc1, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc6, tc2, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc6, bottomcorner, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc4, bottomcorner, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc5, bottomcorner, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc5, tc1, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc5, tc3, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc4, tc3, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	TE_SetupBeamPoints(tc4, tc2, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, Color, Speed);
+	TE_SendToClient(client);
+	//TE_SetupBeamPoints(uppercorner, bottomcorner, ModelIndex, HaloIndex, StartFrame, FrameRate, Life, Width, EndWidth, FadeLength, Amplitude, {255, 0, 0, 255}, Speed);
+	//TE_SendToClient(client);
 }
 
 //Admin Menu Handler for the spray trace function.
@@ -1617,10 +1959,7 @@ public Action Command_RemoveSpray(int client, int args) {
 
 		GetClientName(client, szAdminName, sizeof szAdminName);
 
-	 	for (int i = 1; i <= MaxClients; i++) {
-			if (!UserCanTarget(client, i)) {
-				continue;
-			}
+		for (int i = 1; i <= MaxClients; i++) {
 			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue) {
 				float vecEndPos[3];
 
@@ -1677,10 +2016,7 @@ public Action Command_QuickRemoveSpray(int client, int args) {
 
 		GetClientName(client, szAdminName, sizeof szAdminName);
 
-	 	for (int i = 1; i <= MaxClients; i++) {
-			if (!UserCanTarget(client, i)) {
-				continue;
-			}
+		for (int i = 1; i <= MaxClients; i++) {
 			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue) {
 				float vecEndPos[3];
 
@@ -1734,9 +2070,6 @@ public Action Command_RemoveAllSprays(int client, int args) {
 	GetClientName(client, szAdminName, sizeof szAdminName);
 
 	for (int i = 1; i <= MaxClients; i++) {
-		if (!UserCanTarget(client, i)) {
-			continue;
-		}
 		float vecEndPos[3];
 
 		SprayDecal(i, 0, vecEndPos);
@@ -1790,9 +2123,6 @@ public Action Command_AdminSpray(int client, int args) {
 			//ReplyToCommand(client, "[SSH] %T", "Could Not Find Name", client, arg);
 			return Plugin_Handled;
 		}
-		if (!UserCanTarget(client, target)) {
-			return Plugin_Handled;
-		}
 	}
 
 	if (!GoSpray(client, target)) {
@@ -1842,6 +2172,10 @@ void DisplayAdminSprayMenu(int client, int iPos = 0) {
 
 //Menu Handler for the admin spray selection menu
 public int MenuHandler_AdminSpray(Menu menu, MenuAction action, int param1, int param2) {
+	if (!IsValidClient(param1)) {
+		return 0;
+	}
+
 	switch (action) {
 		case MenuAction_Select: {
 			char info[32];
@@ -1872,6 +2206,8 @@ public int MenuHandler_AdminSpray(Menu menu, MenuAction action, int param1, int 
 			delete menu;
 		}
 	}
+
+	return 0;
 }
 
 //Admin Menu handler for the Admin Spray Selection
@@ -1896,9 +2232,6 @@ public void AdminMenu_AdminSpray(TopMenu hTopMenu, TopMenuAction action, TopMenu
 
 //Called before SprayDecal() to receive a player's decal file and find where to spray it.
 public bool GoSpray(int client, int target) {
-	if (!UserCanTarget(client, target)) {
-		return false;
-	}
 	//Receives the player decal file.
 	char spray[8];
 	if (!GetPlayerDecalFile(target, spray, sizeof(spray))) {
@@ -1923,8 +2256,10 @@ public bool GoSpray(int client, int target) {
 }
 
 //Called to spray a players decal. Used for admin spray.
-public void SprayDecal(int client, int entIndex, float vecPos[3]) {
-	if (!IsValidClient(client)) {
+void SprayDecal(int client, int entIndex, float vecPos[3], bool checkValid=true)
+{
+	if (checkValid && !IsValidClient(client))
+	{
 		return;
 	}
 
@@ -1940,12 +2275,9 @@ public void SprayDecal(int client, int entIndex, float vecPos[3]) {
  ******************************************************************************************/
 
 //Called to open the punishment menu.
-void PunishmentMenu(int client, int sprayer) {
+public Action PunishmentMenu(int client, int sprayer) {
 	if (!IsValidClient(client)) {
-		return;
-	}
-	if (!UserCanTarget(client, sprayer)) {
-		return;
+		return Plugin_Handled;
 	}
 
 	g_arrMenuSprayID[client] = g_arrSprayID[sprayer];
@@ -2054,11 +2386,11 @@ void PunishmentMenu(int client, int sprayer) {
 	hMenu.ExitBackButton = true;
 	hMenu.Display(client, MENU_TIME_FOREVER);
 
-	return;
+	return Plugin_Handled;
 }
 
 //Handler for the Punishment Menu
-public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int param1, int param2) {
+public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int itemNum) {
 	switch (action) {
 		case MenuAction_Select: {
 			char szInfo[32];
@@ -2067,126 +2399,126 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int param1, int 
 			char szAdminName[MAX_NAME_LENGTH];
 			int sprayer;
 
-			szSprayerID = g_arrMenuSprayID[param1];
-			sprayer = GetClientFromAuthID(g_arrMenuSprayID[param1]);
+			szSprayerID = g_arrMenuSprayID[client];
+			sprayer = GetClientFromAuthID(g_arrMenuSprayID[client]);
 			szSprayerName = g_arrSprayName[sprayer];
-			GetClientName(param1, szAdminName, sizeof(szAdminName));
-			hMenu.GetItem(param2, szInfo, sizeof(szInfo));
+			GetClientName(client, szAdminName, sizeof(szAdminName));
+			hMenu.GetItem(itemNum, szInfo, sizeof(szInfo));
 
 			//If you selected to ban someone, we arent going to run the rest of this, calls the ban times menu.
 			if (strcmp(szInfo, "ban") == 0) {
-				DisplayBanTimesMenu(param1);
+				DisplayBanTimesMenu(client);
 			}
 			//Guess you selected not to ban someone, so now we do this stuff.
 			else if (sprayer && IsClientInGame(sprayer)) {
 				AdminId sprayerAdmin = GetUserAdmin(sprayer);
-				AdminId clientAdmin = GetUserAdmin(param1);
+				AdminId clientAdmin = GetUserAdmin(client);
 
 				//Uh Oh. You can't target this person. Now they're going to kill you.
 				if (((sprayerAdmin != INVALID_ADMIN_ID) && (clientAdmin != INVALID_ADMIN_ID)) && g_arrCVars[IMMUNITY].BoolValue && !clientAdmin.CanTarget(sprayerAdmin)) {
-					PrintToChat(param1, "\x04[SSH] %T", "Admin Immune", param1, szSprayerName);
-					LogAction(param1, -1, "[SSH] %T", "Admin Immune Log", LANG_SERVER, szAdminName, szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "Admin Immune", client, szSprayerName);
+					LogAction(client, -1, "[SSH] %T", "Admin Immune Log", LANG_SERVER, szAdminName, szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//Wag that finger at them. You're doing good.
 				else if (strcmp(szInfo, "warn") == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "Warned", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "Warned", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					PunishmentMenu(client, sprayer);
 				}
 				//SMACK! SLAP THAT HOE INTO THE NEXT DIMENSION.
 				else if (strcmp(szInfo, "slap") == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "Slapped And Warned", param1, szSprayerName, szSprayerID, g_arrCVars[SLAPDMG].IntValue);
-					LogAction(param1, -1, "[SSH] %T", "Log Slapped And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, g_arrCVars[SLAPDMG].IntValue);
+					PrintToChat(client, "\x04[SSH] %T", "Slapped And Warned", client, szSprayerName, szSprayerID, g_arrCVars[SLAPDMG].IntValue);
+					LogAction(client, -1, "[SSH] %T", "Log Slapped And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, g_arrCVars[SLAPDMG].IntValue);
 					SlapPlayer(sprayer, g_arrCVars[SLAPDMG].IntValue);
-					PunishmentMenu(param1, sprayer);
+					PunishmentMenu(client, sprayer);
 				}
 				//Now they're dead...>.>
 				else if (strcmp(szInfo, "slay") == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "Slayed And Warned", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log Slayed And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_slay \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "Slayed And Warned", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log Slayed And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_slay \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//You get to watch them scream in agony :D
 				else if (strcmp(szInfo, "burn") == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "Burnt And Warned", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log Burnt And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_burn \"%s\" %d", szSprayerName, g_arrCVars[BURNTIME].IntValue);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "Burnt And Warned", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log Burnt And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_burn \"%s\" %d", szSprayerName, g_arrCVars[BURNTIME].IntValue);
+					PunishmentMenu(client, sprayer);
 				}
 				//All of a sudden. Their legs don't work anymore. odd.
 				else if (strcmp(szInfo, "freeze", false) == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "Froze", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log Froze", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_freeze \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "Froze", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log Froze", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_freeze \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//BEEP. BEEP. BEEP. Now the whole server knows where they are.
 				else if (strcmp(szInfo, "beacon", false) == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "Beaconed", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log Beaconed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_beacon \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "Beaconed", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log Beaconed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_beacon \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//Their legs and anyone's legs around them are magically going to stop working in like....10 seconds...
 				else if (strcmp(szInfo, "freezebomb", false) == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "FreezeBombed", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log FreezeBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_freezebomb \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "FreezeBombed", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log FreezeBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_freezebomb \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//Now this is just cruel. You're going to hurt other people too....
 				else if (strcmp(szInfo, "firebomb", false) == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "FireBombed", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log FireBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_firebomb \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "FireBombed", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log FireBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_firebomb \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//This is just horrible. You're straight murdering other people too...
 				else if (strcmp(szInfo, "timebomb", false) == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "TimeBombed", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log TimeBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_timebomb \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					PrintToChat(client, "\x04[SSH] %T", "TimeBombed", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log TimeBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_timebomb \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//Slip something into their drink?
 				else if (strcmp(szInfo, "drug", false) == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(param1, "\x04[SSH] %T", "Drugged", param1, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log Drugged", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					PrintToChat(client, "\x04[SSH] %T", "Drugged", client, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log Drugged", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
 					CreateTimer(g_arrCVars[DRUGTIME].FloatValue, Undrug, sprayer, TIMER_FLAG_NO_MAPCHANGE);
-					ClientCommand(param1, "sm_drug \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					ClientCommand(client, "sm_drug \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 				//GTFO
 				else if (strcmp(szInfo, "kick") == 0) {
 					KickClient(sprayer, "%T", "Bad Spray Logo", sprayer);
 					PrintToChatAll("\x03[SSH] %T", "Kicked", LANG_SERVER, szSprayerName, szSprayerID);
-					LogAction(param1, -1, "[SSH] %T", "Log Kicked", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					LogAction(client, -1, "[SSH] %T", "Log Kicked", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
 				}
 				//No more spraying for you :)
 				else if (strcmp(szInfo, "spban") == 0) {
 					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					//PrintToChat(param1, "\x04[SSH] %T", "SPBanned", param1, szSprayerName, szSprayerID);
-					//LogAction(param1, -1, "[SSH] %T", "Log SPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(param1, "sm_sprayban \"%s\"", szSprayerName);
-					PunishmentMenu(param1, sprayer);
+					//PrintToChat(client, "\x04[SSH] %T", "SPBanned", client, szSprayerName, szSprayerID);
+					//LogAction(client, -1, "[SSH] %T", "Log SPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					ClientCommand(client, "sm_sprayban \"%s\"", szSprayerName);
+					PunishmentMenu(client, sprayer);
 				}
 			}
 			//Nice. That's not a person.
 			else {
-				PrintToChat(param1, "\x04[SSH] %T", "Could Not Find Name ID", param1, szSprayerName, szSprayerID);
-				LogAction(param1, -1, "[SSH] %T", "Could Not Find Name ID", LANG_SERVER, szSprayerName, szSprayerID);
+				PrintToChat(client, "\x04[SSH] %T", "Could Not Find Name ID", client, szSprayerName, szSprayerID);
+				LogAction(client, -1, "[SSH] %T", "Could Not Find Name ID", LANG_SERVER, szSprayerName, szSprayerID);
 			}
 
 			//If you want to auto-remove their spray after punishing, this does it.
@@ -2194,19 +2526,21 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int param1, int 
 				float vecEndPos[3];
 				SprayDecal(sprayer, 0, vecEndPos);
 
-				PrintToChat(param1, "[SSH] %T", "Spray Removed", param1, szSprayerName, szSprayerID, szAdminName);
-				LogAction(param1, -1, "[SSH] %T", "Spray Removed", LANG_SERVER, szSprayerName, szSprayerID, szAdminName);
+				PrintToChat(client, "[SSH] %T", "Spray Removed", client, szSprayerName, szSprayerID, szAdminName);
+				LogAction(client, -1, "[SSH] %T", "Spray Removed", LANG_SERVER, szSprayerName, szSprayerID, szAdminName);
 			}
 		}
 		case MenuAction_Cancel: {
-			if (param2 == MenuCancel_ExitBack) {
-				RedisplayAdminMenu(g_hAdminMenu, param1);
+			if (itemNum == MenuCancel_ExitBack) {
+				RedisplayAdminMenu(g_hAdminMenu, client);
 			}
 		}
 		case MenuAction_End: {
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 /******************************************************************************************
@@ -2214,13 +2548,13 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int param1, int 
  ******************************************************************************************/
 
 //Called to display the list of ban times.
-void DisplayBanTimesMenu(int client) {
+public void DisplayBanTimesMenu(int client) {
 	char szSprayerName[MAX_NAME_LENGTH];
-	char szSprayerID[32];
+	// `char szSprayerID[32];
 	char szAdminName[MAX_NAME_LENGTH];
 	int sprayer;
 
-	szSprayerID = g_arrMenuSprayID[client];
+	// szSprayerID = g_arrMenuSprayID[client];
 	sprayer = GetClientFromAuthID(g_arrMenuSprayID[client]);
 	szSprayerName = g_arrSprayName[sprayer];
 	GetClientName(client, szAdminName, sizeof(szAdminName));
@@ -2254,25 +2588,22 @@ void DisplayBanTimesMenu(int client) {
 }
 
 //Handler for the ban times menu
-public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int param1, int param2) {
+public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int client, int itemNum) {
+	char szInfo[32];
+	char szSprayerName[MAX_NAME_LENGTH];
+	char szSprayerID[32];
+	char szAdminName[MAX_NAME_LENGTH];
+	int sprayer;
+
+	szSprayerID = g_arrMenuSprayID[client];
+	sprayer = GetClientFromAuthID(g_arrMenuSprayID[client]);
+	szSprayerName = g_arrSprayName[sprayer];
+	GetClientName(client, szAdminName, sizeof(szAdminName));
+	hMenu.GetItem(itemNum, szInfo, sizeof(szInfo));
+
 	switch (action) {
 		case MenuAction_Select: {
-			char szSprayerID[32];
-			szSprayerID = g_arrMenuSprayID[param1];
-			int sprayer = GetClientFromAuthID(g_arrMenuSprayID[param1]);
-			char szSprayerName[MAX_NAME_LENGTH];
-			szSprayerName = g_arrSprayName[sprayer];
-
 			if (sprayer) {
-				char szInfo[32];
-				char szAdminName[MAX_NAME_LENGTH];
-
-				szSprayerID = g_arrMenuSprayID[param1];
-				sprayer = GetClientFromAuthID(g_arrMenuSprayID[param1]);
-				szSprayerName = g_arrSprayName[sprayer];
-				GetClientName(param1, szAdminName, sizeof(szAdminName));
-				hMenu.GetItem(param2, szInfo, sizeof(szInfo));
-
 				int iTime = StringToInt(szInfo);
 				char szBad[128];
 				Format(szBad, 127, "%T", "Bad Spray Logo", LANG_SERVER);
@@ -2281,13 +2612,13 @@ public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int param1, int p
 
 				//SourceBans integration
 				if (g_hExternalBan != null) {
-					ClientCommand(param1, "sm_ban #%d %d \"%s\"", GetClientUserId(sprayer), iTime, szBad);
+					ClientCommand(client, "sm_ban #%d %d \"%s\"", GetClientUserId(sprayer), iTime, szBad);
 
 					if (iTime == 0) {
-						LogAction(param1, -1, "[SSH] %T", "EPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, "SourceBans");
+						LogAction(client, -1, "[SSH] %T", "EPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, "SourceBans");
 					}
 					else {
-						LogAction(param1, -1, "[SSH] %T", "EBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime, "SourceBans");
+						LogAction(client, -1, "[SSH] %T", "EBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime, "SourceBans");
 					}
 
 					delete g_hExternalBan;
@@ -2297,13 +2628,13 @@ public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int param1, int p
 
 					//MySQL Bans integration
 					if (g_hExternalBan != null) {
-						ClientCommand(param1, "mysql_ban #%d %d \"%s\"", GetClientUserId(sprayer), iTime, szBad);
+						ClientCommand(client, "mysql_ban #%d %d \"%s\"", GetClientUserId(sprayer), iTime, szBad);
 
 						if (iTime == 0) {
-							LogAction(param1, -1, "[SSH] %T", "EPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, "MySQL Bans");
+							LogAction(client, -1, "[SSH] %T", "EPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, "MySQL Bans");
 						}
 						else {
-							LogAction(param1, -1, "[SSH] %T", "EBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime, "MySQL Bans");
+							LogAction(client, -1, "[SSH] %T", "EBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime, "MySQL Bans");
 						}
 
 						delete g_hExternalBan;
@@ -2313,10 +2644,10 @@ public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int param1, int p
 						BanClient(sprayer, iTime, BANFLAG_AUTHID, szBad, szBad);
 
 						if (iTime == 0) {
-							LogAction(param1, -1, "[SSH] %T", "PBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+							LogAction(client, -1, "[SSH] %T", "PBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
 						}
 						else {
-							LogAction(param1, -1, "[SSH] %T", "Banned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime);
+							LogAction(client, -1, "[SSH] %T", "Banned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime);
 						}
 					}
 				}
@@ -2329,19 +2660,21 @@ public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int param1, int p
 				}
 			}
 			else {
-				PrintToChat(param1, "\x04[SSH] %T", "Could Not Find Name ID", param1, szSprayerName, szSprayerID);
-				LogAction(param1, -1, "[SSH] %T", "Could Not Find Name ID", LANG_SERVER, szSprayerName, szSprayerID);
+				PrintToChat(client, "\x04[SSH] %T", "Could Not Find Name ID", client, szSprayerName, szSprayerID);
+				LogAction(client, -1, "[SSH] %T", "Could Not Find Name ID", LANG_SERVER, szSprayerName, szSprayerID);
 			}
 		}
 		case MenuAction_Cancel: {
-			if (param2 == MenuCancel_ExitBack) {
-				PunishmentMenu(param1, GetClientFromAuthID(g_arrMenuSprayID[param1]));
+			if (itemNum == MenuCancel_ExitBack) {
+				PunishmentMenu(client, sprayer);
 			}
 		}
 		case MenuAction_End: {
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 /******************************************************************************************
@@ -2349,7 +2682,7 @@ public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int param1, int p
  ******************************************************************************************/
 
  //Called to display the Yes/No Menu for confirming your actions
-void DisplayConfirmMenu(int client, int target, int type) {
+public void DisplayConfirmMenu(int client, int target, int type) {
 	if (!IsValidClient(client)) {
 		return;
 	}
@@ -2387,57 +2720,59 @@ void DisplayConfirmMenu(int client, int target, int type) {
 }
 
 //Menu Handler for confirming spraybanning someone.
-public int MenuHandler_SprayBanConf(Menu hMenu, MenuAction action, int param1, int param2) {
+public int MenuHandler_SprayBanConf(Menu hMenu, MenuAction action, int client, int itemNum) {
+	char info[8];
+	hMenu.GetItem(itemNum, info, sizeof info);
+	int choice = StringToInt(info);
+
 	switch (action) {
 		case MenuAction_Select: {
-			char info[8];
-			hMenu.GetItem(param2, info, sizeof info);
-			int choice = StringToInt(info);
-			// Some stupid shit going on here. choice shouldnt be -1 because it would be used for an index
-// 			if (choice == -1) {
-// 				PunishmentMenu(param1, choice);
-// 			}
-// 			else {
-			if (choice != -1) {
-				RunSprayBan(param1, choice);
+			if (choice == -1) {
+				PunishmentMenu(client, choice);
+			}
+			else {
+				RunSprayBan(client, choice);
 			}
 		}
 		case MenuAction_Cancel: {
-			if (param2 == MenuCancel_ExitBack) {
-				PunishmentMenu(param1, 0);
+			if (itemNum == MenuCancel_ExitBack) {
+				PunishmentMenu(client, choice);
 			}
 		}
 		case MenuAction_End: {
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 //Menu Handler for confirming un-spraybanning someone.
-public int MenuHandler_UnSprayBanConf(Menu hMenu, MenuAction action, int param1, int param2) {
+public int MenuHandler_UnSprayBanConf(Menu hMenu, MenuAction action, int client, int itemNum) {
+	char info[8];
+	hMenu.GetItem(itemNum, info, sizeof info);
+	int choice = StringToInt(info);
+
 	switch (action) {
 		case MenuAction_Select: {
-			char info[8];
-			hMenu.GetItem(param2, info, sizeof info);
-			int choice = StringToInt(info);
-			// Some stupid shit going on here. choice shouldnt be -1 because it would be used for an index
-// 			if (choice == -1) {
-// 				PunishmentMenu(param1, choice);
-// 			}
-// 			else {
-			if (choice != -1) {
-				RunUnSprayBan(param1, choice);
+			if (choice == -1) {
+				PunishmentMenu(client, choice);
+			}
+			else {
+				RunUnSprayBan(client, choice);
 			}
 		}
 		case MenuAction_Cancel: {
-			if (param2 == MenuCancel_ExitBack) {
-				PunishmentMenu(param1, 0);
+			if (itemNum == MenuCancel_ExitBack) {
+				PunishmentMenu(client, choice);
 			}
 		}
 		case MenuAction_End: {
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 /******************************************************************************************
@@ -2445,7 +2780,9 @@ public int MenuHandler_UnSprayBanConf(Menu hMenu, MenuAction action, int param1,
  ******************************************************************************************/
 
  //Used to clear a player from existence in this plugin.
-public void ClearVariables(int client) {
+public void ClearVariables(int client)
+{
+	NormalForSpray[client] = ZERO_VECTOR;
 	g_fSprayVector[client] = ZERO_VECTOR;
 	g_arrSprayName[client][0] = '\0';
 	g_sAuth[client][0] = '\0';
@@ -2509,8 +2846,10 @@ stock bool IsValidClient(int client) {
 	return (0 < client <= MaxClients && IsClientInGame(client));
 }
 
+
 //What is used to find the exact location a player is looking. Used for tracing sprays to the hud/hint and other functions.
-public bool GetClientEyeEndLocation(int client, float vector[3]) {
+public bool GetClientEyeEndLocation(int client, float vector[3])
+{
 	if (!IsValidClient(client)) {
 		return false;
 	}
@@ -2525,6 +2864,7 @@ public bool GetClientEyeEndLocation(int client, float vector[3]) {
 
 	if (TR_DidHit(hTraceRay)) {
 		TR_GetEndPosition(vector, hTraceRay);
+
 		delete hTraceRay;
 
 		return true;
@@ -2535,7 +2875,10 @@ public bool GetClientEyeEndLocation(int client, float vector[3]) {
 	return false;
 }
 
+
 //Checks to make sure a spray is of a valid client.
-public bool ValidSpray(int entity, int contentsmask) {
+public bool ValidSpray(int entity, int contentsmask)
+{
 	return entity > MaxClients;
 }
+
