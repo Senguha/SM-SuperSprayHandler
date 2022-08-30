@@ -14,33 +14,33 @@
 //Used to easily access my cvars out of an array.
 #define PLUGIN_VERSION "1.3.6"
 enum {
-	  ENABLED = 0
-	, ANTIOVERLAP
-	, AUTH
-	, MAXDIS
-	, REFRESHRATE
-	, USEBAN
-	, BURNTIME
-	, SLAPDMG
-	, USESLAY
-	, USEBURN
-	, USEPBAN
-	, USEKICK
-	, USEFREEZE
-	, USEBEACON
-	, USEFREEZEBOMB
-	, USEFIREBOMB
-	, USETIMEBOMB
-	, USESPRAYBAN
-	, DRUGTIME
-	, AUTOREMOVE
-	, RESTRICT
-	, IMMUNITY
-	, GLOBAL
-	, LOCATION
-	, HUDTIME
-	, CONFIRMACTIONS
-	, NUMCVARS
+	ENABLED = 0,
+	ANTIOVERLAP,
+	AUTH,
+	MAXDIS,
+	REFRESHRATE,
+	USEBAN,
+	BURNTIME,
+	SLAPDMG,
+	USESLAY,
+	USEBURN,
+	USEPBAN,
+	USEKICK,
+	USEFREEZE,
+	USEBEACON,
+	USEFREEZEBOMB,
+	USEFIREBOMB,
+	USETIMEBOMB,
+	USESPRAYBAN,
+	DRUGTIME,
+	AUTOREMOVE,
+	RESTRICT,
+	IMMUNITY,
+	GLOBAL,
+	LOCATION,
+	HUDTIME,
+	CONFIRMACTIONS,
+	NUMCVARS
 }
 
 #define MAX_CONNECTIONS 5
@@ -73,6 +73,8 @@ Handle g_hHUD;
 //Used later to decide what type of ban to place
 ConVar g_hExternalBan;
 
+int g_iConnections;
+
 //Our main admin menu handle >.>
 TopMenu g_hAdminMenu;
 TopMenuObject menu_category;
@@ -81,6 +83,8 @@ TopMenuObject menu_category;
 Handle g_hBanForward;
 Handle g_hUnbanForward;
 
+//Were we late loaded?
+bool g_bLate;
 
 //Used for the glow that is applied when tracing a spray
 //int g_PrecacheRedGlow;
@@ -208,15 +212,12 @@ public void OnPluginStart() {
 		OnAdminMenuReady(topmenu);
 	}
 
-	//SQL_Connector();
+	SQL_Connector();
 }
 
-//When the map starts we want to create timers, cache our glow effect, and clear any info that may have decided to stick around.
+//When the map starts we want to create timers, and clear any info that may have decided to stick around.
 public void OnMapStart() {
 	CreateTimers();
-
-	//g_PrecacheRedGlow = PrecacheModel("sprites/redglow1.vmt");
-	//g_PrecacheRedGlow = PrecacheModel("customdev/dev_measuregeneric01blu.vmt");
 
 	for (int i = 1; i <= MaxClients; i++) {
 		ClearVariables(i);
@@ -252,15 +253,16 @@ public void OnLibraryRemoved(const char[] name) {
  ******************************************************************************************/
 
 int g_iSprayTarget[MAXPLAYERS+1] = {-1, ...};
+
 //0 is last look time, 1 is last actual hud text time
 float g_fSprayTraceTime[MAXPLAYERS + 1][2];
 
 //Handles tracing sprays to the HUD or hint message
-public Action CheckAllTraces(Handle hTimer)
+Action CheckAllTraces(Handle hTimer)
 {
 	if (!GetClientCount(true))
 	{
-		return;
+		return Plugin_Continue;
 	}
 
 	char strMessage[128];
@@ -268,6 +270,7 @@ public Action CheckAllTraces(Handle hTimer)
 	float vecPos[3];
 	bool bHudParamsSet = false;
 	float flGameTime = GetGameTime();
+
 	//Pray for the processor - O(n^2) (but better now)
 	for (int client = 1; client <= MaxClients; client++)
 	{
@@ -330,7 +333,7 @@ public Action CheckAllTraces(Handle hTimer)
 			}
 		}
 
-		//Lets just figure out what target we're looking at?
+		// Lets just figure out what target we're looking at?
 		if (!IsValidClient(target))
 		{
 			ClearHud(client, hudType, flGameTime);
@@ -350,8 +353,6 @@ public Action CheckAllTraces(Handle hTimer)
 			continue;
 		}
 
-
-
 		//Generate the text that is to be shown on your screen.
 		FormatEx(strMessage, sizeof strMessage, "Sprayed by:\n%s", g_sAuth[target]);
 
@@ -368,9 +369,8 @@ public Action CheckAllTraces(Handle hTimer)
 				else if (spraydist <= 128)
 				{
 					strMessage[0] = '\0';
-					//Generate the text that is to be shown on your screen.
+					// Generate the text that is to be shown on your screen.
 					FormatEx(strMessage, sizeof(strMessage), "Sprayed by:\n%s\n(showing tracebox for spray)", g_sAuth[target]);
-					//GlowEffect(client, g_fSprayVector[i], 2.0, 0.3, 255, g_PrecacheRedGlow);
 					showTraceSquare(g_fSprayVector[target], target, client);
 				}
 			}
@@ -412,6 +412,8 @@ public Action CheckAllTraces(Handle hTimer)
 			}
 		}
 	}
+
+	return Plugin_Continue;
 }
 
 bool GetNormalAtPoint(float vec[3], int client)
@@ -507,14 +509,120 @@ public void OnAdminMenuCreated(Handle aTopMenu) {
 
 	menu_category = topmenu.AddCategory("Spray Commands", CategoryHandler);
 }
+/******************************************************************************************
+ *                               SQL METHODS FOR SPRAY BANS                               *
+ ******************************************************************************************/
 
+ //Connects us to the database and reads the databases.cfg
+void SQL_Connector() {
+	delete g_Database;
+
+	if (!SQL_CheckConfig("ssh")) {
+		SetFailState("PLUGIN STOPPED - Reason: No config entry found for 'ssh' in databases.cfg - PLUGIN STOPPED");
+	}
+
+	Database.Connect(SQL_ConnectorCallback, "ssh");
+}
+
+//What actually is called to establish a connection to the database.
+//public SQL_ConnectorCallback(Handle owner, Handle hndl, const char[] error, any data) {
+public void SQL_ConnectorCallback(Database db, const char[] error, any data) {
+	if (!db || error[0]) {
+		LogError("Connection to SQL database has failed, reason: %s", error);
+
+		g_iConnections++;
+
+		SQL_Connector();
+
+		if (g_iConnections == MAX_CONNECTIONS) {
+			SetFailState("Connection to SQL database has failed too many times (%d), plugin unloaded to prevent spam.", MAX_CONNECTIONS);
+		}
+
+		return;
+	}
+
+	g_Database = db;
+
+	DBDriver dbDriver = g_Database.Driver;
+	char driver[16];
+	dbDriver.GetIdentifier(driver, sizeof(driver));
+
+	if (StrEqual(driver, "mysql", false)) {
+		SQL_LockDatabase(g_Database);
+		SQL_FastQuery(g_Database, "SET NAMES \"UTF8\"");
+		SQL_UnlockDatabase(g_Database);
+
+		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE IF NOT EXISTS `ssh` (`auth` VARCHAR(32) NOT NULL, `name` VARCHAR(32) DEFAULT '<unknown>', PRIMARY KEY (`auth`)) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;");
+	}
+	else if (StrEqual(driver, "sqlite", false)) {
+		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE IF NOT EXISTS `ssh` (`auth` VARCHAR(32) NOT NULL, `name` VARCHAR(32) DEFAULT '<unknown>', PRIMARY KEY (`auth`));");
+	}
+
+	delete dbDriver;
+}
+
+//More SQL Stuff
+public void SQL_CreateTableCallback(Database db, DBResultSet results, const char[] error, any data) {
+	if (!db || !results || error[0]) {
+		LogError(error);
+		return;
+	}
+
+	if (g_bLate) {
+		for (int i = 1; i <= MaxClients; i++) {
+			if (IsValidClient(i)) {
+				OnClientPutInServer(i);
+			}
+		}
+	}
+}
+
+//What is called to check in the database if a player is spray banned.
+void CheckBan(int client) {
+	if (!IsValidClient(client) || !g_Database) {
+		return;
+	}
+
+	char auth[32];
+	if (!GetClientAuthId(client, AuthId_Steam2, auth, 32, true)) {
+		CreateTimer(5.0, timerCheckBan, GetClientUserId(client));
+		return;
+	}
+
+	char query[256];
+	FormatEx(query, sizeof query, "SELECT * FROM ssh WHERE auth = '%s'", auth);
+	g_Database.Query(sqlQuery_CheckBan, query, GetClientUserId(client));
+}
+
+public Action timerCheckBan(Handle timer, int userid) {
+	int client = GetClientOfUserId(userid);
+	if (!client) {
+		return Plugin_Stop;
+	}
+
+	CheckBan(client);
+
+	return Plugin_Stop;
+}
+
+public void sqlQuery_CheckBan(Database db, DBResultSet results, const char[] error, int userid) {
+	if (!db || !results || error[0]) {
+		LogError("CheckBan query failed. (%s)", error);
+		return;
+	}
+
+	int client = GetClientOfUserId(userid);
+	if (client) {
+		g_bSpraybanned[client] = results.FetchRow();
+	}
+}
 
 /******************************************************************************************
  *                           OUR HOOKS :D TO ACTUALLY DO STUFF                            *
  ******************************************************************************************/
 
  //When a player trys to spray a decal.
-public Action Player_Decal(const char[] name, const clients[], int count, float delay) {
+public Action Player_Decal(const char[] name, const int[] clients, int count, float delay) {
 	//Is this plugin enabled? If not then no need to run the rest of this.
 	if (!g_arrCVars[ENABLED].BoolValue) {
 		return Plugin_Continue;
@@ -824,7 +932,7 @@ public int MenuHandler_SprayUnban(Menu menu, MenuAction action, int param1, int 
 }
 
 //What is called when you run !sm_sprayunban
-public Action Command_Sprayunban(int client, int args) {
+Action Command_Sprayunban(int client, int args) {
 	if (!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
@@ -896,7 +1004,7 @@ public void RunUnSprayBan(int client, int target) {
  ******************************************************************************************/
 
  //What is called to display the Options Menu
- public void DisplayListOptionsMenu(int client) {
+ void DisplayListOptionsMenu(int client) {
 	Menu menu = new Menu(MenuHandler_ListOptions);
 	menu.SetTitle("What Spray-Banned Clients to you wish to list?");
 
@@ -909,7 +1017,7 @@ public void RunUnSprayBan(int client, int target) {
  }
 
  //Menu Handler for the Options Menu
-public int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2) {
+int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
 			char choice[32];
@@ -933,7 +1041,7 @@ public int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int
 }
 
 //What happens when you select to list currently connected spray banned players?
-public void AdminMenu_SprayBans(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
+void AdminMenu_SprayBans(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
 			FormatEx(buffer, maxlength, "Spray Ban List");
@@ -961,7 +1069,7 @@ public Action Command_Spraybans(int client, int args) {
 }
 
 //Display the currently connected spray banned players.
-public void DisplaySprayBans(int client) {
+void DisplaySprayBans(int client) {
 	Menu menu = new Menu(MenuHandler_SprayBans);
 	menu.SetTitle(
 		"----------------------------------------------\n"
@@ -1007,7 +1115,7 @@ public void DisplaySprayBans(int client) {
 }
 
 //Menu HAndler for the spray bans menu
-public int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int param2) {
+int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
 			if (!CheckCommandAccess(param1, "sm_sprayunban", ADMFLAG_UNBAN)) {
@@ -1056,7 +1164,7 @@ public int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int p
 }
 
 //Menu HAndler for the un-banning part of the list.
-public int MenuHandler_Spraybans_Ban(Menu menu, MenuAction action, int param1, int param2) {
+int MenuHandler_Spraybans_Ban(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
 			char info[32];
@@ -1086,7 +1194,7 @@ public int MenuHandler_Spraybans_Ban(Menu menu, MenuAction action, int param1, i
 
 //What is called to list all the spray bans there are in yoru database
 //public void AllSprayBansCallback(Handle owner, Handle hndl, const char[] error, any data) {
-public void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, any data) {
+void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, any data) {
 	if (!db || !results || error[0]) {
 		LogError("SQL error in Listing All Spray Bans: %s", error);
 		return;
@@ -1427,6 +1535,8 @@ public int Native_BanClient(Handle plugin, int numParams) {
 	g_bSpraybanned[client] = true;
 
 	PrintToChat(client, "\x04[Super Spray Handler]\x01 You've been spray banned.");
+
+	return 0;
 }
 
 //Native to un-sprayban a client.
@@ -1444,7 +1554,7 @@ public int Native_UnbanClient(Handle plugin, int numParams) {
 	char auth[32];
 	if (!GetClientAuthId(client, AuthId_Steam2, auth, sizeof auth)) {
 		// Should probably notify client calling native.
-		return;
+		return 0;
 	}
 
 	char sQuery[256];
@@ -1457,6 +1567,8 @@ public int Native_UnbanClient(Handle plugin, int numParams) {
 	g_bSpraybanned[client] = false;
 
 	PrintToChat(client, "\x04[Super Spray Handler]\x01 You've been spray unbanned.");
+
+	return 0;
 }
 
 //Native to check if a client is spray banned.
@@ -2059,7 +2171,7 @@ void DisplayAdminSprayMenu(int client, int iPos = 0) {
 //Menu Handler for the admin spray selection menu
 public int MenuHandler_AdminSpray(Menu menu, MenuAction action, int param1, int param2) {
 	if (!IsValidClient(param1)) {
-		return;
+		return 0;
 	}
 
 	switch (action) {
@@ -2092,6 +2204,8 @@ public int MenuHandler_AdminSpray(Menu menu, MenuAction action, int param1, int 
 			delete menu;
 		}
 	}
+
+	return 0;
 }
 
 //Admin Menu handler for the Admin Spray Selection
@@ -2423,6 +2537,8 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 /******************************************************************************************
@@ -2432,11 +2548,11 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 //Called to display the list of ban times.
 public void DisplayBanTimesMenu(int client) {
 	char szSprayerName[MAX_NAME_LENGTH];
-	char szSprayerID[32];
+	// `char szSprayerID[32];
 	char szAdminName[MAX_NAME_LENGTH];
 	int sprayer;
 
-	szSprayerID = g_arrMenuSprayID[client];
+	// szSprayerID = g_arrMenuSprayID[client];
 	sprayer = GetClientFromAuthID(g_arrMenuSprayID[client]);
 	szSprayerName = g_arrSprayName[sprayer];
 	GetClientName(client, szAdminName, sizeof(szAdminName));
@@ -2555,6 +2671,8 @@ public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int client, int i
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 /******************************************************************************************
@@ -2623,6 +2741,8 @@ public int MenuHandler_SprayBanConf(Menu hMenu, MenuAction action, int client, i
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 //Menu Handler for confirming un-spraybanning someone.
@@ -2649,6 +2769,8 @@ public int MenuHandler_UnSprayBanConf(Menu hMenu, MenuAction action, int client,
 			delete hMenu;
 		}
 	}
+
+	return 0;
 }
 
 /******************************************************************************************
