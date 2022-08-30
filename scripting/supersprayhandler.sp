@@ -106,6 +106,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 	RegPluginLibrary("ssh");
 
+	g_bLate = late;
+
 	return APLRes_Success;
 }
 
@@ -1693,25 +1695,25 @@ void showTraceSquare(float vec[3], int client, int lookingclient)
 
 	}
 
-	/*
+    /*
 
-		  sprays are 64x64
+          sprays are 64x64
 
-				 64
-		tleft --------- tright
-		  |       |       |
-		  |       | 32    |
-		  |       |   32  |
+                 64
+        tleft --------- tright
+          |       |       |
+          |       | 32    |
+          |       |   32  |
  vleft -> *       o-------* <- vright
-		  |       ^       |
-		  |    spraypos   |
-		bleft --------- bright
+          |       ^       |
+          |    spraypos   |
+        bleft --------- bright
 
-	dist from center of spray is sqrt(2048) ftr because pythag. theorum
+    dist from center of spray is sqrt(2048) ftr because pythag. theorum
 
-	the normal vector vnormal is sticking OUT from spraypos in 3d but i'm not drawing that in a code comment
+    the normal vector vnormal is sticking OUT from spraypos in 3d but i'm not drawing that in a code comment
 
-	*/
+    */
 
 	// normalize our normal vector - that is, a vector perpendicular to the plane of the wall this spray is on
 	NormalizeVector(vnormal, vnormal);
