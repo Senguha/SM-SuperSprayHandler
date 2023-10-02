@@ -2,6 +2,7 @@
 	#endinput
 #endif
 #define _ssh_included
+#pragma newdecls required
 
 /**
  * Ban a player from using sprays.

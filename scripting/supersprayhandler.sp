@@ -5,14 +5,18 @@
 #include <sdktools>
 #include <clientprefs>
 #include <ssh>
-#include <smlib>
+
+#define MAX_STEAMAUTH_LENGTH 21 
+#define MAX_COMMUNITYID_LENGTH 18 
+
+
 #include <tf2_stocks>
 #undef REQUIRE_PLUGIN
 #include <adminmenu>
 
 
 //Used to easily access my cvars out of an array.
-#define PLUGIN_VERSION "1.3.6"
+#define PLUGIN_VERSION "1.3.7"
 enum {
 	ENABLED = 0,
 	ANTIOVERLAP,
@@ -93,7 +97,7 @@ bool g_bLate;
 public Plugin myinfo = {
 	name = "Super Spray Handler",
 	description = "Ultimate Tool for Admins to manage Sprays on their servers.",
-	author = "shavit, Nican132, CptMoore, Lebson506th, and TheWreckingCrew6",
+	author = "shavit, Nican132, CptMoore, Lebson506th, TheWreckingCrew6, JoinedSenses, sappho.io",
 	version = PLUGIN_VERSION,
 	url = "https://forums.alliedmods.net/member.php?u=163134"
 }
@@ -370,7 +374,9 @@ Action CheckAllTraces(Handle hTimer)
 				}
 				else if (spraydist <= 128)
 				{
-					strMessage[0] = '\0';
+					// todo: do we need to clear this entire array? do we even need to do *this*? why is this here
+					strMessage[0] = 0x0;
+					
 					// Generate the text that is to be shown on your screen.
 					FormatEx(strMessage, sizeof(strMessage), "Sprayed by:\n%s\n(showing tracebox for spray)", g_sAuth[target]);
 					showTraceSquare(g_fSprayVector[target], target, client);
@@ -2882,3 +2888,81 @@ public bool ValidSpray(int entity, int contentsmask)
 	return entity > MaxClients;
 }
 
+
+// following are stolen from smlib
+
+
+/**
+ * Prints white text to the bottom center of the screen
+ * for one client. Does not work in all games.
+ * Line Breaks can be done with "\n".
+ *
+ * @param client		Client Index.
+ * @param format		Formatting rules.
+ * @param ...			Variable number of format parameters.
+ * @return				True on success, false if this usermessage doesn't exist.
+ */
+bool Client_PrintHintText(int client, const char[] format, any ...) {
+	Handle userMessage = StartMessageOne("HintText", client);
+
+	if (userMessage == INVALID_HANDLE) {
+		return false;
+	}
+
+	char buffer[254];
+
+	SetGlobalTransTarget(client);
+	VFormat(buffer, sizeof(buffer), format, 3);
+
+
+	if (GetFeatureStatus(FeatureType_Native, "GetUserMessageType") == FeatureStatus_Available
+		&& GetUserMessageType() == UM_Protobuf) {
+
+		PbSetString(userMessage, "text", buffer);
+	}
+	else {
+		BfWriteByte(userMessage, 1);
+		BfWriteString(userMessage, buffer);
+	}
+
+	EndMessage();
+
+	return true;
+}
+
+/**
+ * Prints white text to the right-center side of the screen
+ * for one client. Does not work in all games.
+ * Line Breaks can be done with "\n".
+ *
+ * @param client		Client Index.
+ * @param format		Formatting rules.
+ * @param ...			Variable number of format parameters.
+ * @return				True on success, false if this usermessage doesn't exist.
+ */
+bool Client_PrintKeyHintText(int client, const char[] format, any ...) {
+	Handle userMessage = StartMessageOne("KeyHintText", client);
+
+	if (userMessage == INVALID_HANDLE) {
+		return false;
+	}
+
+	char buffer[254];
+
+	SetGlobalTransTarget(client);
+	VFormat(buffer, sizeof(buffer), format, 3);
+
+	if (GetFeatureStatus(FeatureType_Native, "GetUserMessageType") == FeatureStatus_Available
+		&& GetUserMessageType() == UM_Protobuf) {
+
+		PbAddString(userMessage, "hints", buffer);
+	}
+	else {
+		BfWriteByte(userMessage, 1);
+		BfWriteString(userMessage, buffer);
+	}
+
+	EndMessage();
+
+	return true;
+}
