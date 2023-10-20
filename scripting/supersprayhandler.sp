@@ -1720,8 +1720,8 @@ void showTraceSquare(float vec[3], int client, int lookingclient)
 		(
 			mins,                                       // upper corner
 			maxs,                                       // lower corner
-			laser,									    // model index
-			laser,									    // halo index
+			laser,                                      // model index
+			0,                                          // halo index
 			0,                                          // startfame
 			1,                                          // framerate
 			0.5,                                        // lifetime
@@ -1820,8 +1820,8 @@ void showTraceSquare(float vec[3], int client, int lookingclient)
 	tr,
 	br,
 	bl,
-	laser,   									// model index
-	laser,   									// halo index
+	laser,                                      // model index
+	0,                                          // halo index
 	0,                                          // startfame
 	1,                                          // framerate
 	0.5,                                        // lifetime
