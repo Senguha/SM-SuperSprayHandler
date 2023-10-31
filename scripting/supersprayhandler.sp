@@ -251,10 +251,7 @@ public void OnClientPutInServer(int client)
 {
 	g_fSprayVector[client] = ZERO_VECTOR;
 	g_bSpraybanned[client] = false;
-}
 
-public void OnClientAuthorized(int client)
-{
 	CheckBan(client);
 }
 
@@ -603,25 +600,36 @@ public void SQL_CreateTableCallback(Database db, DBResultSet results, const char
 }
 
 //What is called to check in the database if a player is spray banned.
-void CheckBan(int client) {
-	if (!IsValidClient(client) || !g_Database) {
+void CheckBan(int client)
+{
+	if (!IsValidClient(client))
+	{
+		LogError("Client %L not authed in CheckBan, waiting 5 sec...", client);
+		CreateTimer(5.0, timerCheckBan, GetClientUserId(client));
+		return;
+	}
+	
+	if (!g_Database)
+	{
 		return;
 	}
 
 	char auth[32];
-	if (!GetClientAuthId(client, AuthId_Steam2, auth, 32, true)) {
+	if (!GetClientAuthId(client, AuthId_Steam2, auth, 32, true))
+	{
 		CreateTimer(5.0, timerCheckBan, GetClientUserId(client));
 		return;
 	}
 
-	char query[256];
+	char query[512];
 	FormatEx(query, sizeof query, "SELECT * FROM ssh WHERE auth = '%s'", auth);
 	g_Database.Query(sqlQuery_CheckBan, query, GetClientUserId(client));
 }
 
 public Action timerCheckBan(Handle timer, int userid) {
 	int client = GetClientOfUserId(userid);
-	if (!client) {
+	if (!client)
+	{
 		return Plugin_Stop;
 	}
 
@@ -631,13 +639,15 @@ public Action timerCheckBan(Handle timer, int userid) {
 }
 
 public void sqlQuery_CheckBan(Database db, DBResultSet results, const char[] error, int userid) {
-	if (!db || !results || error[0]) {
+	if (!db || !results || error[0])
+	{
 		LogError("CheckBan query failed. (%s)", error);
 		return;
 	}
 
 	int client = GetClientOfUserId(userid);
-	if (client) {
+	if (client)
+	{
 		g_bSpraybanned[client] = results.FetchRow();
 	}
 }
@@ -655,6 +665,12 @@ public Action Player_Decal(const char[] name, const int[] clients, int count, fl
 
 	//Gets the client that is spraying.
 	int client = TE_ReadNum("m_nPlayer");
+
+	if (client >= 65)
+	{
+		PrintToChat(client, "\x04[Super Spray Handler]\x01 Due to an ongoing TF2 bug involving players with client slots over 64 spraying the wrong spray, you have been blocked from spraying. Sorry!");
+		PrintToChat(client, "\x04[Super Spray Handler]\x01 For more info, see https://github.com/ValveSoftware/Source-1-Games/issues/5266.");
+	}
 
 	//Is this even a valid client?
 	if (IsValidClient(client) && !IsClientReplay(client) && !IsClientSourceTV(client)) {
@@ -1703,8 +1719,8 @@ void showTraceSquare(float vec[3], int client, int lookingclient)
 		(
 			mins,                                       // upper corner
 			maxs,                                       // lower corner
-			laser,									    // model index
-			laser,									    // halo index
+			laser,                                      // model index
+			0,                                          // halo index
 			0,                                          // startfame
 			1,                                          // framerate
 			0.5,                                        // lifetime
@@ -1803,8 +1819,8 @@ void showTraceSquare(float vec[3], int client, int lookingclient)
 	tr,
 	br,
 	bl,
-	laser,   									// model index
-	laser,   									// halo index
+	laser,                                      // model index
+	0,                                          // halo index
 	0,                                          // startfame
 	1,                                          // framerate
 	0.5,                                        // lifetime
