@@ -97,6 +97,9 @@ bool g_bLate;
 //Used for the glow that is applied when tracing a spray
 //int g_PrecacheRedGlow;
 
+bool highMaxPlayers = false;
+
+
 //The plugin info :D
 public Plugin myinfo = {
 	name = "Super Spray Handler",
@@ -121,6 +124,17 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	int laser = -1;
 //What we want to do when this beauty starts up.
 public void OnPluginStart() {
+
+
+	char cmdline[512];
+	GetCommandLine(cmdline, sizeof(cmdline));
+
+	if (StrContains(cmdline, "-unrestricted_maxplayers") != -1)
+	{
+		highMaxPlayers = true;
+	}
+
+
 	// precache our sprite
 	laser = PrecacheModel("sprites/laser.vmt", true);
 
@@ -381,17 +395,16 @@ Action CheckAllTraces(Handle hTimer)
 		{
 			if (IsValidClient(i) && i != client && !CheckForZero(g_fSprayVector[i]))
 			{
-				float spraydist = GetVectorDistance(g_fSprayVector[client], g_fSprayVector[i]);
-				if (spraydist <= 16)
+				float spraydist = GetVectorDistance(g_fSprayVector[client], g_fSprayVector[i], true);
+				if (spraydist <= 256 /*(16*16)*/ )
 				{
 					FormatEx(strMessage, sizeof(strMessage), "Sprays are too close together to determine owner!");
 				}
-				else if (spraydist <= 128)
+				else if (!highMaxPlayers && spraydist <= 16384 /*(128*128)*/)
 				{
 					// todo: do we need to clear this entire array? do we even need to do *this*? why is this here
 					strMessage[0] = 0x0;
 					
-					// Generate the text that is to be shown on your screen.
 					FormatEx(strMessage, sizeof(strMessage), "Sprayed by:\n%s\n(showing tracebox for spray)", g_sAuth[target]);
 					showTraceSquare(g_fSprayVector[target], target, client);
 				}
@@ -1370,8 +1383,11 @@ public int MenuHandler_AllSpraybans_Ban(Menu menu, MenuAction action, int param1
  ******************************************************************************************/
 
 //Its like spray-banning, but offline...Allows you to target offline clients.
-public Action Command_OfflineSprayban(int client, int args) {
-	if (!IsValidClient(client)) {
+public Action Command_OfflineSprayban(int client, int args)
+{
+	if (client != 0 && !IsValidClient(client))
+	{
+		PrintToServer("[SM] Invalid client [%i] called Command_OfflineSprayban?", client);
 		return Plugin_Handled;
 	}
 
@@ -1665,7 +1681,11 @@ public Action Command_TraceSpray(int client, int args) {
 
 				PrintToChat(client, "[SSH] %T", "Spray By", client, g_arrSprayName[i], g_arrSprayID[i], time);
 				//GlowEffect(client, g_fSprayVector[i], 2.0, 0.3, 255, g_PrecacheRedGlow);
-				showTraceSquare(g_fSprayVector[i], i, client);
+
+				if (!highMaxPlayers)
+				{
+					showTraceSquare(g_fSprayVector[i], i, client);
+				}
 				PunishmentMenu(client, i);
 
 				return Plugin_Handled;
