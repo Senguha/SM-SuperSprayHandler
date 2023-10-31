@@ -57,12 +57,16 @@ ConVar g_arrCVars[NUMCVARS];
 char g_arrSprayName[MAXPLAYERS + 1][MAX_NAME_LENGTH];
 char g_arrSprayID[MAXPLAYERS + 1][32];
 char g_arrMenuSprayID[MAXPLAYERS + 1][32];
+
+// this client's spray
 float g_fSprayVector[MAXPLAYERS+1][3];
+
 int g_arrSprayTime[MAXPLAYERS + 1];
 char g_sAuth[MAXPLAYERS+1][512];
 bool g_bSpraybanned[MAXPLAYERS+1];
 Database g_Database;
 float NormalForSpray[MAXPLAYERS+1][3];
+
 
 //Our Timer that will be initialized later
 Handle g_hSprayTimer;
@@ -114,9 +118,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 	return APLRes_Success;
 }
-
+	int laser = -1;
 //What we want to do when this beauty starts up.
 public void OnPluginStart() {
+	// precache our sprite
+	laser = PrecacheModel("sprites/laser.vmt", true);
+
 	//We want these translations files :D
 	LoadTranslations("ssh.phrases");
 	LoadTranslations("common.phrases");
@@ -152,8 +159,8 @@ public void OnPluginStart() {
 	g_arrCVars[AUTH] = CreateConVar("sm_ssh_auth", "1", "Which authentication identifiers should be seen in the HUD?\n- This is a \"math\" cvar, add the proper numbers for your likings. (Example: 1 + 4 = 5/Name + IP address)\n1 - Name\n2 - SteamID\n4 - IP address", 0, true, 1.0);
 
 	//SSH CVars
-	g_arrCVars[REFRESHRATE] = CreateConVar("sm_ssh_refresh","1.0","How often the program will trace to see player's spray to the HUD. 0 to disable.");
-	g_arrCVars[MAXDIS] = CreateConVar("sm_ssh_dista","50.0","How far away the spray will be traced to.");
+	g_arrCVars[REFRESHRATE] = CreateConVar("sm_ssh_refresh","0.1","How often the program will trace to see player's spray to the HUD. 0 to disable.");
+	g_arrCVars[MAXDIS] = CreateConVar("sm_ssh_dista","64.0","How far away (FROM YOUR MOUSE, NOT YOUR POSITION) the spray will be traced to.");
 	g_arrCVars[USEBAN] = CreateConVar("sm_ssh_enableban","1","Whether or not banning is enabled. 0 to disable temporary banning.");
 	g_arrCVars[BURNTIME] = CreateConVar("sm_ssh_burntime","10","How long the burn punishment is for.");
 	g_arrCVars[SLAPDMG] = CreateConVar("sm_ssh_slapdamage","5","How much damage the slap punishment is for. 0 to disable.");
@@ -244,7 +251,10 @@ public void OnClientPutInServer(int client)
 {
 	g_fSprayVector[client] = ZERO_VECTOR;
 	g_bSpraybanned[client] = false;
+
+	CheckBan(client);
 }
+
 
 //If you unload the admin menu, we don't want to keep using it :/
 public void OnLibraryRemoved(const char[] name) {
@@ -287,7 +297,8 @@ Action CheckAllTraces(Handle hTimer)
 		}
 
 		//We don't want the message to show on our screen for years after we stopped looking at a spray. right?
-		switch (hudType) {
+		switch (hudType)
+		{
 			case 1: {
 				Client_PrintKeyHintText(client, "");
 			}
@@ -307,17 +318,21 @@ Action CheckAllTraces(Handle hTimer)
 		}
 
 		////Let's check if you can trace admins
-		//bool bTraceAdmins = CheckCommandAccess(client, "ssh_hud_can_trace_admins", 0, true);
-		// get closest spray
+		// bool bTraceAdmins = CheckCommandAccess(client, "ssh_hud_can_trace_admins", 0, true);
+		// vecPos is where the client is looking
+		// g_fSprayVector[client_indx] is where that client's spray is
+		float eyePos[3] = {0.0, 0.0, 0.0};
+		GetClientEyePosition(client, eyePos);
 
-		//int target = -1;
-		//for (int i = 1; i <= MaxClients; i++)
-		//{
-		//    if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue)
-		//    {
-		//        target = i;
-		//    }
-		//}
+		// dont check sprays that are kind of far away from the client
+		static float tooFar = 65536.0; // 256.0 * 256.0;
+		float worldDist = GetVectorDistance(vecPos, eyePos, true);
+		if (worldDist >= tooFar)
+		{
+			ClearHud(client, hudType, flGameTime);
+			continue;
+		}
+
 		int target = -1;
 		for (int curcl = 1; curcl <= MaxClients; curcl++)
 		{
@@ -586,25 +601,36 @@ public void SQL_CreateTableCallback(Database db, DBResultSet results, const char
 }
 
 //What is called to check in the database if a player is spray banned.
-void CheckBan(int client) {
-	if (!IsValidClient(client) || !g_Database) {
+void CheckBan(int client)
+{
+	if (!IsValidClient(client))
+	{
+		LogError("Client %L not authed in CheckBan, waiting 5 sec...", client);
+		CreateTimer(5.0, timerCheckBan, GetClientUserId(client));
+		return;
+	}
+	
+	if (!g_Database)
+	{
 		return;
 	}
 
 	char auth[32];
-	if (!GetClientAuthId(client, AuthId_Steam2, auth, 32, true)) {
+	if (!GetClientAuthId(client, AuthId_Steam2, auth, 32, true))
+	{
 		CreateTimer(5.0, timerCheckBan, GetClientUserId(client));
 		return;
 	}
 
-	char query[256];
+	char query[512];
 	FormatEx(query, sizeof query, "SELECT * FROM ssh WHERE auth = '%s'", auth);
 	g_Database.Query(sqlQuery_CheckBan, query, GetClientUserId(client));
 }
 
 public Action timerCheckBan(Handle timer, int userid) {
 	int client = GetClientOfUserId(userid);
-	if (!client) {
+	if (!client)
+	{
 		return Plugin_Stop;
 	}
 
@@ -614,13 +640,15 @@ public Action timerCheckBan(Handle timer, int userid) {
 }
 
 public void sqlQuery_CheckBan(Database db, DBResultSet results, const char[] error, int userid) {
-	if (!db || !results || error[0]) {
+	if (!db || !results || error[0])
+	{
 		LogError("CheckBan query failed. (%s)", error);
 		return;
 	}
 
 	int client = GetClientOfUserId(userid);
-	if (client) {
+	if (client)
+	{
 		g_bSpraybanned[client] = results.FetchRow();
 	}
 }
@@ -638,6 +666,12 @@ public Action Player_Decal(const char[] name, const int[] clients, int count, fl
 
 	//Gets the client that is spraying.
 	int client = TE_ReadNum("m_nPlayer");
+
+	if (client >= 65)
+	{
+		PrintToChat(client, "\x04[Super Spray Handler]\x01 Due to an ongoing TF2 bug involving players with client slots over 64 spraying the wrong spray, you have been blocked from spraying. Sorry!");
+		PrintToChat(client, "\x04[Super Spray Handler]\x01 For more info, see https://github.com/ValveSoftware/Source-1-Games/issues/5266.");
+	}
 
 	//Is this even a valid client?
 	if (IsValidClient(client) && !IsClientReplay(client) && !IsClientSourceTV(client)) {
@@ -1622,9 +1656,12 @@ public Action Command_TraceSpray(int client, int args) {
 
 	float vecPos[3];
 
-	if (GetClientEyeEndLocation(client, vecPos)) {
-		for (int i = 1; i <= MaxClients; i++) {
-			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue) {
+	if (GetClientEyeEndLocation(client, vecPos))
+	{
+		for (int i = 1; i <= MaxClients; i++)
+		{
+			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue)
+			{
 				int time = RoundFloat(GetGameTime()) - g_arrSprayTime[i];
 
 				PrintToChat(client, "[SSH] %T", "Spray By", client, g_arrSprayName[i], g_arrSprayID[i], time);
@@ -1678,14 +1715,13 @@ void showTraceSquare(float vec[3], int client, int lookingclient)
 		// add cube vec to our pos to get the worldpos of our cube minmaxs
 		AddVectors(spraypos, mins, mins);
 		AddVectors(spraypos, maxs, maxs);
-
 		// send the box
 		TE_SendBeamBox
 		(
 			mins,                                       // upper corner
 			maxs,                                       // lower corner
-			PrecacheModel("sprites/laser.vmt", true),   // model index
-			PrecacheModel("sprites/laser.vmt", true),   // halo index
+			laser,                                      // model index
+			0,                                          // halo index
 			0,                                          // startfame
 			1,                                          // framerate
 			0.5,                                        // lifetime
@@ -1784,8 +1820,8 @@ void showTraceSquare(float vec[3], int client, int lookingclient)
 	tr,
 	br,
 	bl,
-	PrecacheModel("sprites/laser.vmt", true),   // model index
-	PrecacheModel("sprites/laser.vmt", true),   // halo index
+	laser,                                      // model index
+	0,                                          // halo index
 	0,                                          // startfame
 	1,                                          // framerate
 	0.5,                                        // lifetime
