@@ -764,7 +764,7 @@ public void AdminMenu_SprayBan(TopMenu topmenu, TopMenuAction action, TopMenuObj
 	}
 	else if (action == TopMenuAction_SelectOption) {
 		Menu menu = new Menu(MenuHandler_SprayBan);
-		menu.SetTitle("Spray Ban:");
+		menu.SetTitle("Заблокировать спрей:");
 
 		int count;
 
@@ -933,7 +933,7 @@ public void AdminMenu_SprayUnban(TopMenu topmenu, TopMenuAction action, TopMenuO
 	}
 	else if (action == TopMenuAction_SelectOption) {
 		Menu menu = new Menu(MenuHandler_SprayUnban);
-		menu.SetTitle("Spray Unban:");
+		menu.SetTitle("Разблокировать сперей:");
 
 		int count;
 
