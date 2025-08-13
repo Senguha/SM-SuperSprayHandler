@@ -933,7 +933,7 @@ public void AdminMenu_SprayUnban(TopMenu topmenu, TopMenuAction action, TopMenuO
 	}
 	else if (action == TopMenuAction_SelectOption) {
 		Menu menu = new Menu(MenuHandler_SprayUnban);
-		menu.SetTitle("Разблокировать сперей:");
+		menu.SetTitle("Разблокировать спрей:");
 
 		int count;
 
