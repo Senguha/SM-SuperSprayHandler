@@ -102,28 +102,70 @@
 		"en"			"Ban Player from Spraying"
 	}
 
-	//Menu option
+		//Menu option
 	"Trace"
 	{
-		"en"			"Trace Spray"
+		"en"			"Trace spray"
 	}
 
 	//Menu option
 	"Remove"
 	{
-		"en"			"Remove Spray"
+		"en"			"Remove spray"
 	}
 	
 	//Menu option
 	"QuickRemove"
 	{
-		"en"			"Quickly Remove Spray"
+		"en"			"Quick remove spray"
+	}
+
+	//Menu option
+	"RemoveAll"
+	{
+		"en"			"Remove all sprays"
 	}
 
 	//Menu option
 	"AdminSpray"
 	{
-		"en"			"Admin Spray"
+		"en"			"Apply spray"
+	}
+	
+	//Menu option
+	"SprayBan"
+	{
+		"en"			"Spray ban"
+	}
+
+	//Menu option
+	"SprayUnban"
+	{
+		"en"			"Unban spray"
+	}
+	
+	//Menu option
+	"SprayBanList"
+	{
+		"en"			"Spray Banlist"
+	}
+
+	//Menu option
+	"SprayCommands"
+	{
+		"en"			"Spray commands"
+	}
+	
+	//Menu option
+	"AllPlayers"
+	{
+		"en" 			"All banned players" 
+	}
+
+	//Menu option
+	"AllOnlinePlayers"
+	{
+		"en" 			"Banned players on the server"
 	}
 
 	//Warning
@@ -131,6 +173,7 @@
 	{
 		"en"			"Please change your spray logo, it is inappropriate."
 	}
+
 
 	//Kick reason
 	"Bad Spray Logo"

@@ -5,7 +5,7 @@
 	"Title"
 	{
 		"#format"		"{1:s},{2:s},{3:d}"
-		"ru"			"{1} ({2}). Последний логотип нанесён {3}с назад."
+		"ru"			"{1} ({2}). Последний спрей нанесён {3}с назад."
 	}
 
 	//Admin spray menu title
@@ -17,14 +17,14 @@
 	//Punishment option
 	"Warn"
 	{
-		"ru"			"Предупредить Игрока"
+		"ru"			"Предупредить игрока"
 	}
 
 	//Punishment option
 	"SlapWarn"
 	{
 		"#format"		"{1:d}"
-		"ru"			"Шлёпнул и предупредил игрока на {1} урона"
+		"ru"			"Шлёпнуть и предупредить игрока на {1} урона"
 	}
 
 	//Punishment option
@@ -56,7 +56,7 @@
 	//Punishment option
 	"FreezeBomb"
 	{
-		"ru"			"Морозная бомба"
+		"ru"			"Замораживающая бомба"
 	}
 
 	//Punishment option
@@ -80,7 +80,7 @@
 	//Punishment option
 	"Kick"
 	{
-		"ru"			"Выгнать игрока"
+		"ru"			"Кикнуть игрока"
 	}
 
 	//Punishment option
@@ -99,43 +99,86 @@
 	//Punishment option
 	"SPBan"
 	{
-		"ru"			"Забанить игрока от Нанесения спрея"
+		"ru"			"Заблокировать игроку нанесение спрея"
 	}
 
 	//Menu option
 	"Trace"
 	{
-		"ru"			"Прослеживать Спрей"
+		"ru"			"Обнаружить спрей"
 	}
 
 	//Menu option
 	"Remove"
 	{
-		"ru"			"Удалить Спрей"
+		"ru"			"Удалить спрей"
 	}
 	
 	//Menu option
 	"QuickRemove"
 	{
-		"ru"			"Быстро Удалить Спрей"
+		"ru"			"Быстро удалить спрей"
+	}
+
+	//Menu option
+	"RemoveAll"
+	{
+		"ru"			"Удалить все спреи"
 	}
 
 	//Menu option
 	"AdminSpray"
 	{
-		"ru"			"Спрей Администратора"
+		"ru"			"Нанести спрей игрока"
+	}
+	
+	//Menu option
+	"SprayBan"
+	{
+		"ru"			"Заблокировать спрей"
+	}
+
+	//Menu option
+	"SprayUnban"
+	{
+		"ru"			"Разблокировать спрей"
+	}
+	
+	//Menu option
+	"SprayBanList"
+	{
+		"ru"			"Список заблокированных"
+	}
+
+	//Menu option
+	"SprayCommands"
+	{
+		"ru"			"Управление спреями"
+	}
+	
+	//Menu option
+	"AllPlayers"
+	{
+		"ru" 			"Все заблокированные игроки"
+	}
+
+	//Menu option
+	"AllOnlinePlayers"
+	{
+		"ru" 			"Игроки на сервере"
 	}
 
 	//Warning
 	"Please change"
 	{
-		"ru"			"Пожалуйста, измените ваш логотип спрея, он неуместен."
+		"ru"			"Пожалуйста, измените ваш спрей, он нарушает правила!."
 	}
+	
 
 	//Kick reason
 	"Bad Spray Logo"
 	{
-		"ru"			"Забанить Спрей"
+		"ru"			"Спрей нарушающий правила"
 	}
 
 	//Command reply
@@ -173,7 +216,7 @@
 	"Slapped And Warned"
 	{
 		"#format"		"{1:s},{2:s},{3:d}"
-		"ru"			"Шлёпнул и предупредил игрока {1} ({2}) на {3} урона"
+		"ru"			"Шлёпнуть и предупредить игрока {1} ({2}) на {3} урона"
 	}
 
 	//Punishment annoucement
@@ -245,7 +288,7 @@
 	"Kicked"
 	{
 		"#format"		"{1:s},{2:s}"
-		"ru"			"Выгнал игрока {1} ({2}) за плохой спрей"
+		"ru"			"Кикнул игрока {1} ({2}) за плохой спрей"
 	}
 
 	//Punishment annoucement
@@ -315,7 +358,7 @@
 	//Command Reply
 	"Cannot Spray"
 	{
-		"ru"			"Ошибка: Невозможно распылить спрей цели"
+		"ru"			"Ошибка: Невозможно нанести спрей цели"
 	}
 
 	//Command reply

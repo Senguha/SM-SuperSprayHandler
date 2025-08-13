@@ -147,17 +147,17 @@ public void OnPluginStart() {
 
 
 	//Beautiful Commands
-	RegAdminCmd("sm_spraytrace", Command_TraceSpray, ADMFLAG_BAN, "Look up the owner of the logo in front of you.");
-	RegAdminCmd("sm_removespray", Command_RemoveSpray, ADMFLAG_BAN, "Remove the logo in front of you.");
-	RegAdminCmd("sm_adminspray", Command_AdminSpray, ADMFLAG_BAN, "Sprays the named player's logo in front of you.");
-	RegAdminCmd("sm_qremovespray", Command_QuickRemoveSpray, ADMFLAG_BAN, "Removes the logo in front of you without opening punishment menu.");
-	RegAdminCmd("sm_removeallsprays", Command_RemoveAllSprays, ADMFLAG_BAN, "Removes all sprays from the map.");
+	RegAdminCmd("sm_spraytrace", Command_TraceSpray, ADMFLAG_KICK, "Look up the owner of the logo in front of you.");
+	RegAdminCmd("sm_removespray", Command_RemoveSpray, ADMFLAG_KICK, "Remove the logo in front of you.");
+	RegAdminCmd("sm_adminspray", Command_AdminSpray, ADMFLAG_KICK, "Sprays the named player's logo in front of you.");
+	RegAdminCmd("sm_qremovespray", Command_QuickRemoveSpray, ADMFLAG_KICK, "Removes the logo in front of you without opening punishment menu.");
+	RegAdminCmd("sm_removeallsprays", Command_RemoveAllSprays, ADMFLAG_KICK, "Removes all sprays from the map.");
 
-	RegAdminCmd("sm_sprayban", Command_Sprayban, ADMFLAG_BAN, "Usage: sm_sprayban <target>");
-	RegAdminCmd("sm_sban", Command_Sprayban, ADMFLAG_BAN, "Usage: sm_sban <target>");
+	RegAdminCmd("sm_sprayban", Command_Sprayban, ADMFLAG_KICK, "Usage: sm_sprayban <target>");
+	RegAdminCmd("sm_sban", Command_Sprayban, ADMFLAG_KICK, "Usage: sm_sban <target>");
 
-	RegAdminCmd("sm_offlinesprayban", Command_OfflineSprayban, ADMFLAG_BAN, "Usage: sm_offlinesprayban <steamid> [name]");
-	RegAdminCmd("sm_offlinesban", Command_OfflineSprayban, ADMFLAG_BAN, "Usage: sm_offlinesban <steamid> [name]");
+	RegAdminCmd("sm_offlinesprayban", Command_OfflineSprayban, ADMFLAG_KICK, "Usage: sm_offlinesprayban <steamid> [name]");
+	RegAdminCmd("sm_offlinesban", Command_OfflineSprayban, ADMFLAG_KICK, "Usage: sm_offlinesban <steamid> [name]");
 
 	RegAdminCmd("sm_sprayunban", Command_Sprayunban, ADMFLAG_UNBAN, "Usage: sm_sprayunban <target>");
 	RegAdminCmd("sm_sunban", Command_Sprayunban, ADMFLAG_UNBAN, "Usage: sm_sunban <target>");
@@ -502,11 +502,11 @@ void ClearHud(int client, int hudType, float gameTime) {
  //Our custom category needs to know what to do right?
 public void CategoryHandler(Handle topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	if (action == TopMenuAction_DisplayTitle) {
-		FormatEx(buffer, maxlength, "Spray Commands: ");
+		Format(buffer, maxlength, "%T","SprayCommands", param);
 	}
 
 	else if (action == TopMenuAction_DisplayOption) {
-		FormatEx(buffer, maxlength, "Spray Commands");
+		Format(buffer, maxlength, "%T","SprayCommands", param);
 	}
 }
 
@@ -524,13 +524,13 @@ public void OnAdminMenuReady(Handle aTopMenu) {
 
 	g_hAdminMenu = topmenu;
 
-	g_hAdminMenu.AddItem("sm_spraybans", AdminMenu_SprayBans, menu_category, "sm_spraybans", ADMFLAG_BAN);
-	g_hAdminMenu.AddItem("sm_spraytrace", AdminMenu_TraceSpray, menu_category, "sm_spraytrace", ADMFLAG_BAN);
-	g_hAdminMenu.AddItem("sm_removespray", AdminMenu_SprayRemove, menu_category, "sm_removespray", ADMFLAG_BAN);
-	g_hAdminMenu.AddItem("sm_adminspray", AdminMenu_AdminSpray, menu_category, "sm_adminspray", ADMFLAG_BAN);
-	g_hAdminMenu.AddItem("sm_sprayban", AdminMenu_SprayBan, menu_category, "sm_sprayban", ADMFLAG_BAN);
+	g_hAdminMenu.AddItem("sm_spraybans", AdminMenu_SprayBans, menu_category, "sm_spraybans", ADMFLAG_KICK);
+	g_hAdminMenu.AddItem("sm_spraytrace", AdminMenu_TraceSpray, menu_category, "sm_spraytrace", ADMFLAG_KICK);
+	g_hAdminMenu.AddItem("sm_removespray", AdminMenu_SprayRemove, menu_category, "sm_removespray", ADMFLAG_KICK);
+	g_hAdminMenu.AddItem("sm_adminspray", AdminMenu_AdminSpray, menu_category, "sm_adminspray", ADMFLAG_KICK);
+	g_hAdminMenu.AddItem("sm_sprayban", AdminMenu_SprayBan, menu_category, "sm_sprayban", ADMFLAG_KICK);
 	g_hAdminMenu.AddItem("sm_sprayunban", AdminMenu_SprayUnban, menu_category, "sm_sprayunban", ADMFLAG_UNBAN);
-	g_hAdminMenu.AddItem("sm_qremovespray", AdminMenu_QuickSprayRemove, menu_category, "sm_qremovespray", ADMFLAG_BAN);
+	g_hAdminMenu.AddItem("sm_qremovespray", AdminMenu_QuickSprayRemove, menu_category, "sm_qremovespray", ADMFLAG_KICK);
 	g_hAdminMenu.AddItem("sm_removeallsprays", AdminMenu_RemoveAllSprays, menu_category, "sm_removeallsprays", ADMFLAG_BAN);
 }
 
@@ -689,7 +689,7 @@ public Action Player_Decal(const char[] name, const int[] clients, int count, fl
 	if (IsValidClient(client) && !IsClientReplay(client) && !IsClientSourceTV(client)) {
 		//We need to check if this player is spray banned, and if so, we will pre hook this spray attempt and block it.
 		if (g_bSpraybanned[client]) {
-			PrintToChat(client, "\x04[Super Spray Handler]\x01 You are Spray Banned and thus unable to Spray.");
+			PrintToChat(client, "\x04[Super Spray Handler]\x01 Вы были заблокированы и не можете наносить спреи.");
 			return Plugin_Handled;
 		}
 
@@ -702,7 +702,7 @@ public Action Player_Decal(const char[] name, const int[] clients, int count, fl
 			for (int i = 1; i <= MaxClients; i++) {
 				if (IsValidClient(i) && i != client && !CheckForZero(g_fSprayVector[i])) {
 					if (GetVectorDistance(fSprayVector, g_fSprayVector[i]) <= g_arrCVars[ANTIOVERLAP].FloatValue) {
-						PrintToChat(client, "\x04[Super Spray Handler]\x01 Your spray is too close to \x05%N\x01's spray.", i);
+						PrintToChat(client, "\x04[Super Spray Handler]\x01 Ваш спрей слишком близко к спрею \x05%N\x01.", i);
 
 						return Plugin_Handled;
 					}
@@ -760,7 +760,7 @@ public void LocationChanged(ConVar hConVar, const char[] szOldValue, const char[
  //What decides what happens when you select the Spray Ban option in the admin menu
 public void AdminMenu_SprayBan(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	if (action == TopMenuAction_DisplayOption) {
-		FormatEx(buffer, maxlength, "Spray Ban");
+		Format(buffer, maxlength, "%T", "SprayBan", param);
 	}
 	else if (action == TopMenuAction_SelectOption) {
 		Menu menu = new Menu(MenuHandler_SprayBan);
@@ -877,8 +877,8 @@ public void RunSprayBan(int client, int target) {
 		CreateTimer(5.0, timerAddSprayBan, GetClientUserId(target), TIMER_REPEAT);
 	}
 
-	ReplyToCommand(client, "[SM] Successfully spray banned %N.", target);
-	PrintToChat(target, "\x04[Super Spray Handler]\x01 You've been spray banned.");
+	ReplyToCommand(client, "[SM] Успешно заблокированы спреи игроку %N.", target);
+	PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам заблокировали нанесение спреев.");
 
 	LogAction(client, target, "Spray banned.");
 	ShowActivity(client, "Spray banned %N", target);
@@ -929,7 +929,7 @@ void AddSprayBan(int client, const char[] auth) {
 //What handles when you select to Un-Spray ban someone
 public void AdminMenu_SprayUnban(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	if (action == TopMenuAction_DisplayOption) {
-		FormatEx(buffer, maxlength, "Spray Unban");
+		Format(buffer, maxlength, "%T","SprayUnban", param);
 	}
 	else if (action == TopMenuAction_SelectOption) {
 		Menu menu = new Menu(MenuHandler_SprayUnban);
@@ -954,7 +954,7 @@ public void AdminMenu_SprayUnban(TopMenu topmenu, TopMenuAction action, TopMenuO
 		}
 
 		if (!count) {
-			menu.AddItem("none", "No matching players found");
+			menu.AddItem("none", "Не найдено подходящих игроков");
 		}
 
 		menu.ExitBackButton = true;
@@ -1049,8 +1049,8 @@ public void RunUnSprayBan(int client, int target) {
 	Call_PushCell(target);
 	Call_Finish();
 
-	ReplyToCommand(client, "[SM] Successfully spray unbanned %N.", target);
-	PrintToChat(target, "\x04[Super Spray Handler]\x01 You've been spray unbanned.");
+	ReplyToCommand(client, "[SM] Успешно разблокированы спереи игрока %N.", target);
+	PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам были разблокированы спреи.");
 }
 
 /******************************************************************************************
@@ -1060,10 +1060,14 @@ public void RunUnSprayBan(int client, int target) {
  //What is called to display the Options Menu
  void DisplayListOptionsMenu(int client) {
 	Menu menu = new Menu(MenuHandler_ListOptions);
-	menu.SetTitle("What Spray-Banned Clients to you wish to list?");
+	menu.SetTitle("%T","SprayBanList", LANG_SERVER);
 
-	menu.AddItem("1", "Currently Connected Spray-Banned Clients");
-	menu.AddItem("2", "All Spray-Banned clients");
+	char title1[64], title2[64];
+	Format(title1, sizeof(title1), "%T", "AllOnlinePlayers", LANG_SERVER);
+	Format(title2, sizeof(title1), "%T", "AllPlayers", LANG_SERVER);
+	
+	menu.AddItem("1", title1);
+	menu.AddItem("2", title2);
 
 	menu.ExitButton = true;
 
@@ -1085,7 +1089,7 @@ int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2
 					g_Database.Query(AllSprayBansCallback, "SELECT * FROM ssh", GetClientSerial(param1));
 				}
 			}
-		}
+		}     			
 		case MenuAction_End: {
 			delete menu;
 		}
@@ -1098,7 +1102,7 @@ int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2
 void AdminMenu_SprayBans(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			FormatEx(buffer, maxlength, "Spray Ban List");
+			Format(buffer, maxlength, "%T","SprayBanList", param);
 		}
 		case TopMenuAction_SelectOption: {
 			DisplayListOptionsMenu(param);
@@ -1125,12 +1129,11 @@ public Action Command_Spraybans(int client, int args) {
 //Display the currently connected spray banned players.
 void DisplaySprayBans(int client) {
 	Menu menu = new Menu(MenuHandler_SprayBans);
-	menu.SetTitle(
-		"----------------------------------------------\n"
-	... "Spray Banned Players: (Select a client to un-sprayban)\n"
+	
+	menu.SetTitle("----------------------------------------------\n"
+	... "Заблокированные игроки\n"
 	... "----------------------------------------------\n"
-	... "(Select a client to un-sprayban)"
-	);
+	... "(Выберите игрока для разблокировки)");
 
 	int count;
 
@@ -1159,7 +1162,7 @@ void DisplaySprayBans(int client) {
 	}
 
 	if (!count) {
-		menu.AddItem("none", "No spray banned players are connected.");
+		menu.AddItem("none", "Нет игроков с блокировкой спреев.");
 	}
 
 	menu.ExitButton = true;
@@ -1194,7 +1197,7 @@ int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int param2) 
 
 			if (!StrEqual(info, "none")) {
 				Menu menu2 = new Menu(MenuHandler_Spraybans_Ban);
-				menu2.SetTitle("Are you sure you want to spray un-ban %s (%s)?", name, auth);
+				menu2.SetTitle("Вы уверены что хотите разблокировать спреи %s (%s)?", name, auth);
 
 				menu2.AddItem(info, "Yes");
 				menu2.AddItem("none", "No");
@@ -1262,9 +1265,9 @@ void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, 
 
 	Menu menu = new Menu(MenuHandler_AllSpraybans);
 	menu.SetTitle("----------------------------------------------\n"
-	... "Spray Banned Players: (Select a client to un-sprayban)\n"
+	... "Заблокированные игроки\n"
 	... "----------------------------------------------\n"
-	... "(Select a client to un-sprayban)");
+	... "(Выберите игрока для разблокировки)");
 
 	while (results.FetchRow()) {
 		char auth[MAX_STEAMAUTH_LENGTH];
@@ -1291,7 +1294,7 @@ void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, 
 	}
 
 	if (!menu.ItemCount) {
-		menu.AddItem("none", "There are no spray banned players.");
+		menu.AddItem("none", "Нет игроков с блокировкой спреев.");
 	}
 
 	menu.ExitButton = true;
@@ -1319,7 +1322,7 @@ public int MenuHandler_AllSpraybans(Menu menu, MenuAction action, int param1, in
 					//PrintToChat(param1, "%s", tokens[1]);
 
 					Menu menu2 = new Menu(MenuHandler_AllSpraybans_Ban);
-					menu2.SetTitle("Are you sure you want to spray un-ban %s (%s)?", tokens[0], tokens[1]);
+					menu2.SetTitle("Вы уверены что хотите разблокировать спреи %s (%s)?", tokens[0], tokens[1]);
 
 					menu2.AddItem(tokens[1], "Yes");
 					menu2.AddItem("none", "No");
@@ -1456,7 +1459,7 @@ public Action Command_OfflineSprayban(int client, int args)
 	SQL_FastQuery(g_Database, sQuery);
 	SQL_UnlockDatabase(g_Database);
 
-	ShowActivity(client, "Spray banned %s. (%s)", targetSafeName, auth);
+	ShowActivity(client, "Заблокироввны спреи игрока %s. (%s)", targetSafeName, auth);
 
 	int target = -1;
 
@@ -1492,7 +1495,7 @@ public Action Command_OfflineSprayban(int client, int args)
 
 		LogAction(client, target, "Spray banned.");
 
-		PrintToChat(target, "\x04[Super Spray Handler]\x01 You've been spray banned.");
+		PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам были заблокированы спреи.");
 	}
 
 	return Plugin_Handled;
@@ -1549,7 +1552,7 @@ public void Offlinebans_UnbanCallback(Database db, DBResultSet results, const ch
 		Call_PushCell(target);
 		Call_Finish();
 
-		PrintToChat(target, "\x04[Super Spray Handler]\x01 You've been spray unbanned.");
+		PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам были разблокированы спреи.");
 	}
 
 	delete results;
@@ -1591,7 +1594,7 @@ public int Native_BanClient(Handle plugin, int numParams) {
 
 	g_bSpraybanned[client] = true;
 
-	PrintToChat(client, "\x04[Super Spray Handler]\x01 You've been spray banned.");
+	PrintToChat(client, "\x04[Super Spray Handler]\x01 Вам были заблокированы спреи.");
 
 	return 0;
 }
@@ -1623,7 +1626,7 @@ public int Native_UnbanClient(Handle plugin, int numParams) {
 
 	g_bSpraybanned[client] = false;
 
-	PrintToChat(client, "\x04[Super Spray Handler]\x01 You've been spray unbanned.");
+	PrintToChat(client, "\x04[Super Spray Handler]\x01 Вам были разблокированы спреи.");
 
 	return 0;
 }
@@ -2108,7 +2111,7 @@ public void AdminMenu_QuickSprayRemove(TopMenu hTopMenu, TopMenuAction action, T
 
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			Format(szBuffer, iMaxLength, "Quickly Remove Spray", param);
+			Format(szBuffer, iMaxLength, "%T","QuickRemove", param);
 		}
 		case TopMenuAction_SelectOption: {
 			Command_QuickRemoveSpray(param, 0);
@@ -2152,7 +2155,7 @@ public void AdminMenu_RemoveAllSprays(TopMenu hTopMenu, TopMenuAction action, To
 
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			Format(szBuffer, iMaxLength, "Remove All Sprays", param);
+			Format(szBuffer, iMaxLength, "%T","RemoveAll", param);
 		}
 		case TopMenuAction_SelectOption: {
 			Command_RemoveAllSprays(param, 0);
@@ -2250,7 +2253,7 @@ public int MenuHandler_AdminSpray(Menu menu, MenuAction action, int param1, int 
 				PrintToChat(param1, "[SSH] %T", "Could Not Find", param1);
 			}
 			else if (g_bSpraybanned[target]) {
-				PrintToChat(param1, "[SSH} %T", "Player is Spray Banned", param1);
+				PrintToChat(param1, "[SSH] %T", "Player is Spray Banned", param1);
 			}
 			else {
 				GoSpray(param1, target);
@@ -2752,28 +2755,28 @@ public void DisplayConfirmMenu(int client, int target, int type) {
 		case 0: {
 			Menu menu = new Menu(MenuHandler_SprayBanConf);
 
-			menu.SetTitle("SprayBan %N?", target);
+			menu.SetTitle("Заблокировать спреи %N?", target);
 			menu.ExitBackButton = true;
 
 			char info[8];
 			IntToString(target, info, sizeof info);
 
-			menu.AddItem(info, "Yes!");
-			menu.AddItem("-1", "No!");
+			menu.AddItem(info, "Да");
+			menu.AddItem("-1", "Нет");
 
 			menu.Display(client, MENU_TIME_FOREVER);
 		}
 		case 1: {
 			Menu menu = new Menu(MenuHandler_UnSprayBanConf);
 
-			menu.SetTitle("Un-SprayBan %N?", target);
+			menu.SetTitle("Разблокировать спреи %N?", target);
 			menu.ExitBackButton = true;
 
 			char info[8];
 			IntToString(target, info, sizeof info);
 
-			menu.AddItem(info, "Yes!");
-			menu.AddItem("-1", "No!");
+			menu.AddItem(info, "Да");
+			menu.AddItem("-1", "Нет");
 
 			menu.Display(client, MENU_TIME_FOREVER);
 		}
