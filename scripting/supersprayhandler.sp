@@ -406,7 +406,7 @@ Action CheckAllTraces(Handle hTimer)
 					strMessage[0] = 0x0;
 					
 					FormatEx(strMessage, sizeof(strMessage), "Sprayed by:\n%s\n(showing tracebox for spray)", g_sAuth[target]);
-					showTraceSquare(g_fSprayVector[target], target, client);
+					//showTraceSquare(g_fSprayVector[target], target, client);
 				}
 			}
 		}
@@ -1687,7 +1687,7 @@ public Action Command_TraceSpray(int client, int args) {
 
 				if (!highMaxPlayers)
 				{
-					showTraceSquare(g_fSprayVector[i], i, client);
+					//showTraceSquare(g_fSprayVector[i], i, client);
 				}
 				PunishmentMenu(client, i);
 
