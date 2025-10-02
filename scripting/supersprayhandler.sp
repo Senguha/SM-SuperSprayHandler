@@ -4,10 +4,12 @@
 #include <sourcemod>
 #include <sdktools>
 #include <clientprefs>
+#include <morecolors>
 #include <ssh>
 
 #define MAX_STEAMAUTH_LENGTH 21 
 #define MAX_COMMUNITYID_LENGTH 18 
+#define PREFIX "{violet}[SSH]{plum} "
 
 
 #include <tf2_stocks>
@@ -16,7 +18,7 @@
 
 
 //Used to easily access my cvars out of an array.
-#define PLUGIN_VERSION "1.3.7"
+#define PLUGIN_VERSION "1.4.0"
 enum {
 	ENABLED = 0,
 	ANTIOVERLAP,
@@ -63,10 +65,19 @@ float g_fSprayVector[MAXPLAYERS+1][3];
 
 int g_arrSprayTime[MAXPLAYERS + 1];
 char g_sAuth[MAXPLAYERS+1][512];
-bool g_bSpraybanned[MAXPLAYERS+1];
 Database g_Database;
 float NormalForSpray[MAXPLAYERS+1][3];
 
+StringMap SpraybansMap;
+
+enum struct SprayBan {
+	int startTime;
+	int length;
+	int endTime;
+	char adminSteamID[MAX_AUTHID_LENGTH];
+	char reason[64];
+	char auth[MAX_AUTHID_LENGTH];
+}
 
 //Our Timer that will be initialized later
 Handle g_hSprayTimer;
@@ -78,8 +89,6 @@ int g_iHudLoc;
 //The HUD that will be initialized later IF your server supports the HUD.
 Handle g_hHUD;
 
-//Used later to decide what type of ban to place
-ConVar g_hExternalBan;
 
 int g_iConnections;
 
@@ -89,7 +98,9 @@ TopMenuObject menu_category;
 
 //Forwards
 Handle g_hBanForward;
-Handle g_hUnbanForward;
+
+//Timer
+Handle g_BanExpireTimer[MAXPLAYERS + 1] = { null, ... };
 
 //Were we late loaded?
 bool g_bLate;
@@ -104,28 +115,41 @@ bool highMaxPlayers = false;
 public Plugin myinfo = {
 	name = "Super Spray Handler",
 	description = "Ultimate Tool for Admins to manage Sprays on their servers.",
-	author = "shavit, Nican132, CptMoore, Lebson506th, TheWreckingCrew6, JoinedSenses, sappho.io",
+	author = "shavit, Nican132, CptMoore, Lebson506th, TheWreckingCrew6, JoinedSenses, sappho.io, Mtseng",
 	version = PLUGIN_VERSION,
-	url = "https://forums.alliedmods.net/member.php?u=163134"
+	url = "",
 }
 
 //Used to create the natives for other plugins to hook into this beauty
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
-	CreateNative("ssh_BanClient", Native_BanClient);
-	CreateNative("ssh_UnbanClient", Native_UnbanClient);
-	CreateNative("ssh_IsBanned", Native_IsBanned);
 
+	g_hBanForward = CreateGlobalForward("SSH_OnBan", ET_Ignore, Param_String, Param_String,Param_String,Param_String,Param_Cell,Param_String);
 	RegPluginLibrary("ssh");
 
 	g_bLate = late;
 
 	return APLRes_Success;
 }
-	int laser = -1;
+
+void ForwardSprayBan(char[] userName = "<unknown>", char[] userAuth, char[] adminName, char[] adminAuth, int time, char[] reason){
+
+	Call_StartForward(g_hBanForward);
+	Call_PushString(userName);
+	Call_PushString(userAuth);
+	Call_PushString(adminName);
+	Call_PushString(adminAuth);
+	Call_PushCell(time);
+	Call_PushString(reason);
+	Call_Finish();
+}
+
+int laser = -1;
+
 //What we want to do when this beauty starts up.
 public void OnPluginStart() {
 
-
+	SpraybansMap = CreateTrie();
+	
 	char cmdline[512];
 	GetCommandLine(cmdline, sizeof(cmdline));
 
@@ -151,19 +175,21 @@ public void OnPluginStart() {
 	RegAdminCmd("sm_removespray", Command_RemoveSpray, ADMFLAG_KICK, "Remove the logo in front of you.");
 	RegAdminCmd("sm_adminspray", Command_AdminSpray, ADMFLAG_KICK, "Sprays the named player's logo in front of you.");
 	RegAdminCmd("sm_qremovespray", Command_QuickRemoveSpray, ADMFLAG_KICK, "Removes the logo in front of you without opening punishment menu.");
-	RegAdminCmd("sm_removeallsprays", Command_RemoveAllSprays, ADMFLAG_KICK, "Removes all sprays from the map.");
-
-	RegAdminCmd("sm_sprayban", Command_Sprayban, ADMFLAG_KICK, "Usage: sm_sprayban <target>");
-	RegAdminCmd("sm_sban", Command_Sprayban, ADMFLAG_KICK, "Usage: sm_sban <target>");
-
-	RegAdminCmd("sm_offlinesprayban", Command_OfflineSprayban, ADMFLAG_KICK, "Usage: sm_offlinesprayban <steamid> [name]");
-	RegAdminCmd("sm_offlinesban", Command_OfflineSprayban, ADMFLAG_KICK, "Usage: sm_offlinesban <steamid> [name]");
-
-	RegAdminCmd("sm_sprayunban", Command_Sprayunban, ADMFLAG_UNBAN, "Usage: sm_sprayunban <target>");
-	RegAdminCmd("sm_sunban", Command_Sprayunban, ADMFLAG_UNBAN, "Usage: sm_sunban <target>");
+	RegAdminCmd("sm_removeallsprays", Command_RemoveAllSprays, ADMFLAG_UNBAN, "Removes all sprays from the map.");
 
 	RegAdminCmd("sm_sbans", Command_Spraybans, ADMFLAG_GENERIC, "Shows a list of all connected spray banned players.");
 	RegAdminCmd("sm_spraybans", Command_Spraybans, ADMFLAG_GENERIC, "Shows a list of all connected spray banned players.");
+	
+	RegConsoleCmd("sm_spraystatus", Command_SprayStatus, "Shows the sprayban status of a player.");
+
+	RegAdminCmd("sm_sban", Command_SpraybanNew, ADMFLAG_KICK, "Usage: sm_sban <target> <duration in days)> [reason]");
+	RegAdminCmd("sm_sprayban", Command_SpraybanNew, ADMFLAG_KICK, "Usage: sm_sprayban <target> <duration in days)> [reason]");
+	RegAdminCmd("sm_sunban", Command_SprayUnbannew, ADMFLAG_KICK, "Usage: sm_sunban <target>");
+	RegAdminCmd("sm_sprayunban", Command_SprayUnbannew, ADMFLAG_KICK, "Usage: sm_sprayunban <target>");
+	RegAdminCmd("sm_offsban", Command_SpraybanOfflinenew, ADMFLAG_KICK, "Usage: sm_offsban <'steamid'> <duration in days> [reason]");
+	RegAdminCmd("sm_offsprayban", Command_SpraybanOfflinenew, ADMFLAG_KICK, "Usage: sm_offsprayban <'steamid'> <duration in days> [reason]");
+	RegAdminCmd("sm_offsunban", Command_SprayUnbanOfflinenew, ADMFLAG_KICK, "Usage: sm_offsunban <'steamid'>");
+	RegAdminCmd("sm_offsprayunban", Command_SprayUnbanOfflinenew, ADMFLAG_KICK, "Usage: sm_offsprayunban <'steamid'>");
 
 	CreateConVar("sm_ssh_version", PLUGIN_VERSION, "Super Spray Handler version", FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_NOTIFY);
 
@@ -191,11 +217,11 @@ public void OnPluginStart() {
 	g_arrCVars[DRUGTIME] = CreateConVar("sm_ssh_drugtime","0","set the time a sprayer is drugged as a punishment. 0 to disable.");
 	g_arrCVars[AUTOREMOVE] = CreateConVar("sm_ssh_autoremove","0","Enables automatically removing sprays when a punishment is dealt.");
 	g_arrCVars[RESTRICT] = CreateConVar("sm_ssh_restrict","1","Enables or disables restricting admins to punishments they are given access to. (1 = commands they have access to, 0 = all)");
-	g_arrCVars[IMMUNITY] = CreateConVar("sm_ssh_useimmunity","1","Enables or disables using admin immunity to determine if one admin can punish another.");
+	g_arrCVars[IMMUNITY] = CreateConVar("sm_ssh_useimmunity","1","Enables or disables using admin immunity to determine if one admin can punish another."); //disabled
 	g_arrCVars[GLOBAL] = CreateConVar("sm_ssh_global","1","Enables or disables global spray tracking. If this is on, sprays can still be tracked when a player leaves the server.");
 	g_arrCVars[LOCATION] = CreateConVar("sm_ssh_location","1","Where players will see the owner of the spray that they're aiming at? 0 - Disabled 1 - Hud hint 2 - Hint text (like sm_hsay) 3 - Center text (like sm_csay) 4 - HUD");
 	g_arrCVars[HUDTIME] = CreateConVar("sm_ssh_hudtime","1.0","How long the HUD messages are displayed.");
-	g_arrCVars[CONFIRMACTIONS] = CreateConVar("sm_ssh_confirmactions","1","Should you have to confirm spray banning and un-spraybanning?");
+	g_arrCVars[CONFIRMACTIONS] = CreateConVar("sm_ssh_confirmactions","1","Should you have to confirm spray banning and un-spraybanning?"); // disabled
 
 	g_arrCVars[REFRESHRATE].AddChangeHook(TimerChanged);
 	g_arrCVars[LOCATION].AddChangeHook(LocationChanged);
@@ -203,9 +229,6 @@ public void OnPluginStart() {
 
 	AutoExecConfig(true, "plugin.ssh");
 
-	//Forwards
-	g_hBanForward = CreateGlobalForward("ssh_OnBan", ET_Event, Param_Cell);
-	g_hUnbanForward = CreateGlobalForward("ssh_OnUnban", ET_Event, Param_Cell);
 
 	//Adds hook that looks for when a player sprays a decal.
 	AddTempEntHook("Player Decal", Player_Decal);
@@ -244,6 +267,9 @@ public void OnPluginStart() {
 
 //When the map starts we want to create timers, and clear any info that may have decided to stick around.
 public void OnMapStart() {
+	
+	ClearTrie(SpraybansMap);
+	
 	CreateTimers();
 
 	for (int i = 1; i <= MaxClients; i++) {
@@ -254,6 +280,13 @@ public void OnMapStart() {
 //If sm_ssh_global = 0 then we want to get rid of a players spray when they leave.
 public void OnClientDisconnect(int client)
 {
+	
+	char clientKey[16];
+	IntToString(client, clientKey, sizeof(clientKey));
+	
+	RemoveFromTrie(SpraybansMap, clientKey);
+	CloseBanTimer(client);
+	
 	if (!g_arrCVars[GLOBAL].BoolValue)
 	{
 		ClearVariables(client);
@@ -264,9 +297,51 @@ public void OnClientDisconnect(int client)
 public void OnClientPutInServer(int client)
 {
 	g_fSprayVector[client] = ZERO_VECTOR;
-	g_bSpraybanned[client] = false;
 
 	CheckBan(client);
+}
+
+public Action Timer_BanExpire(Handle timer, DataPack dataPack)
+{
+	dataPack.Reset();
+	g_BanExpireTimer[dataPack.ReadCell()] = null;
+
+	int client = GetClientOfUserId(dataPack.ReadCell());
+	if (!client)
+		return Plugin_Continue;
+
+	char targetAuth[MAX_STEAMAUTH_LENGTH];
+	GetClientAuthId(client, AuthId_Steam2, targetAuth, sizeof targetAuth);
+	LogMessage("Ban expired for %s", targetAuth);
+
+	CPrintToChat(client, "%s%T", PREFIX, "Ban expired", client);
+
+	if (IsClientInGame(client)){
+		char clientKey[16];
+		IntToString(client, clientKey, sizeof(clientKey));
+		SpraybansMap.Remove(clientKey);
+	}
+		
+	return Plugin_Continue;
+}
+void CloseBanTimer(int target)
+{
+	if (g_BanExpireTimer[target] != INVALID_HANDLE && CloseHandle(g_BanExpireTimer[target]))
+		g_BanExpireTimer[target] = INVALID_HANDLE;
+}
+void CreateBanTimer(int target, int remainingTime)
+{
+	// 1 day
+	if (remainingTime < 86400)
+	{
+		DataPack dataPack;
+
+		if (remainingTime)
+			g_BanExpireTimer[target] = CreateDataTimer(float(remainingTime), Timer_BanExpire, dataPack, TIMER_FLAG_NO_MAPCHANGE);
+
+		dataPack.WriteCell(target);
+		dataPack.WriteCell(GetClientUserId(target));
+	}
 }
 
 //If you unload the admin menu, we don't want to keep using it :/
@@ -388,7 +463,7 @@ Action CheckAllTraces(Handle hTimer)
 		}
 
 		//Generate the text that is to be shown on your screen.
-		FormatEx(strMessage, sizeof strMessage, "Sprayed by:\n%s", g_sAuth[target]);
+		FormatEx(strMessage, sizeof strMessage, "%T", "HUD Spray", client, g_sAuth[target]);
 
 		// check if this spray is too close to another spray
 		for (int i = 1; i <= MaxClients; i++)
@@ -398,14 +473,14 @@ Action CheckAllTraces(Handle hTimer)
 				float spraydist = GetVectorDistance(g_fSprayVector[client], g_fSprayVector[i], true);
 				if (spraydist <= 256 /*(16*16)*/ )
 				{
-					FormatEx(strMessage, sizeof(strMessage), "Sprays are too close together to determine owner!");
+					FormatEx(strMessage, sizeof(strMessage), "%T", "HUD Sprays too close", client);
 				}
 				else if (!highMaxPlayers && spraydist <= 16384 /*(128*128)*/)
 				{
 					// todo: do we need to clear this entire array? do we even need to do *this*? why is this here
 					strMessage[0] = 0x0;
 					
-					FormatEx(strMessage, sizeof(strMessage), "Sprayed by:\n%s\n(showing tracebox for spray)", g_sAuth[target]);
+					FormatEx(strMessage, sizeof(strMessage), "%T", "HUD Spray", client, g_sAuth[target]);
 					//showTraceSquare(g_fSprayVector[target], target, client);
 				}
 			}
@@ -529,9 +604,9 @@ public void OnAdminMenuReady(Handle aTopMenu) {
 	g_hAdminMenu.AddItem("sm_removespray", AdminMenu_SprayRemove, menu_category, "sm_removespray", ADMFLAG_KICK);
 	g_hAdminMenu.AddItem("sm_adminspray", AdminMenu_AdminSpray, menu_category, "sm_adminspray", ADMFLAG_KICK);
 	g_hAdminMenu.AddItem("sm_sprayban", AdminMenu_SprayBan, menu_category, "sm_sprayban", ADMFLAG_KICK);
-	g_hAdminMenu.AddItem("sm_sprayunban", AdminMenu_SprayUnban, menu_category, "sm_sprayunban", ADMFLAG_UNBAN);
+	g_hAdminMenu.AddItem("sm_sprayunban", AdminMenu_SprayUnban, menu_category, "sm_sprayunban", ADMFLAG_KICK);
 	g_hAdminMenu.AddItem("sm_qremovespray", AdminMenu_QuickSprayRemove, menu_category, "sm_qremovespray", ADMFLAG_KICK);
-	g_hAdminMenu.AddItem("sm_removeallsprays", AdminMenu_RemoveAllSprays, menu_category, "sm_removeallsprays", ADMFLAG_BAN);
+	g_hAdminMenu.AddItem("sm_removeallsprays", AdminMenu_RemoveAllSprays, menu_category, "sm_removeallsprays", ADMFLAG_UNBAN);
 }
 
 //When we have our admin menu created, lets make our custom category.
@@ -587,10 +662,35 @@ public void SQL_ConnectorCallback(Database db, const char[] error, any data) {
 		SQL_FastQuery(g_Database, "SET NAMES \"UTF8\"");
 		SQL_UnlockDatabase(g_Database);
 
-		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE IF NOT EXISTS `ssh` (`auth` VARCHAR(32) NOT NULL, `name` VARCHAR(32) DEFAULT '<unknown>', PRIMARY KEY (`auth`)) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;");
+		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE IF NOT EXISTS `ssh` ( \
+  			`banID` INT NOT NULL AUTO_INCREMENT, \
+  			`auth` VARCHAR(45) NOT NULL, \
+  			`name` VARCHAR(45) NULL DEFAULT '<unknown>', \
+  			`created` INT NOT NULL, \
+  			`ends` INT NOT NULL, \
+  			`duration` INT NOT NULL, \
+  			`adminID` VARCHAR(45) NOT NULL, \
+  			`reason` VARCHAR(64) NULL, \
+			`removedType` varchar(1) DEFAULT NULL, \
+			`removedBy` varchar(45) NULL, \
+			`removedOn` INT NULL, \
+  			PRIMARY KEY (`banID`)) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;");
 	}
+
 	else if (StrEqual(driver, "sqlite", false)) {
-		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE IF NOT EXISTS `ssh` (`auth` VARCHAR(32) NOT NULL, `name` VARCHAR(32) DEFAULT '<unknown>', PRIMARY KEY (`auth`));");
+		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE  IF NOT EXISTS `ssh` ( \
+			`auth`	VARCHAR(32) NOT NULL, \
+			`name`	VARCHAR(32) DEFAULT '<unknown>', \
+			`banID`	INTEGER, \
+			`created`	INTEGER NOT NULL, \
+			`duration`	INTEGER NOT NULL, \
+			`ends`	INTEGER NOT NULL, \
+			`adminID`	VARCHAR(32) NOT NULL, \
+			`reason`	VARCHAR(64), \
+			`removedType` varchar(1) DEFAULT NULL, \
+			`removedBy` varchar(45) NULL, \
+			`removedOn` INT NULL, \
+			PRIMARY KEY(`banID` AUTOINCREMENT) );");
 	}
 
 	delete dbDriver;
@@ -622,7 +722,7 @@ void CheckBan(int client)
 		return;
 	}
 	
-	if (!g_Database)
+	if (!g_Database || IsClientSourceTV(client))
 	{
 		return;
 	}
@@ -633,9 +733,17 @@ void CheckBan(int client)
 		CreateTimer(5.0, timerCheckBan, GetClientUserId(client));
 		return;
 	}
+	
+	char escapedAuth[64];
+	g_Database.Escape(auth, escapedAuth, sizeof(escapedAuth));
+	
+	char query[1024];
 
-	char query[512];
-	FormatEx(query, sizeof query, "SELECT * FROM ssh WHERE auth = '%s'", auth);
+	g_Database.Format(query, sizeof(query), "\
+	SELECT `auth`, `created`, `ends`, `duration`, `adminID`, `reason` \
+	FROM `ssh` WHERE `auth` = '%s' AND `removedType` IS NULL \
+	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", escapedAuth);
+
 	g_Database.Query(sqlQuery_CheckBan, query, GetClientUserId(client));
 }
 
@@ -659,9 +767,40 @@ public void sqlQuery_CheckBan(Database db, DBResultSet results, const char[] err
 	}
 
 	int client = GetClientOfUserId(userid);
-	if (client)
+
+	if (results.HasResults && results.RowCount && results.FetchRow())
 	{
-		g_bSpraybanned[client] = results.FetchRow();
+		
+		char auth[MAX_AUTHID_LENGTH];
+		char authAdmin[MAX_AUTHID_LENGTH];
+		char reason[64];
+
+		results.FetchString(0, auth, sizeof(auth));
+		int created = results.FetchInt(1);
+		int ends = results.FetchInt(2);
+		int duration = results.FetchInt(3);
+		results.FetchString(4, authAdmin, sizeof(authAdmin));
+		results.FetchString(5, reason, sizeof(reason));
+
+		AdminId adm = FindAdminByIdentity("steam", authAdmin);
+		char admName[MAX_NAME_LENGTH];
+		adm.GetUsername(admName, sizeof(admName));
+		
+		SprayBan banInfo;
+		banInfo.adminSteamID = authAdmin;
+		strcopy(banInfo.reason, sizeof(banInfo.reason), reason);
+		banInfo.startTime = created;
+		banInfo.endTime = ends;
+		banInfo.length = duration;
+		banInfo.auth = auth;
+		
+		char clientKey[16];
+		IntToString(client, clientKey, sizeof(clientKey));
+		SetTrieArray(SpraybansMap, clientKey, banInfo, sizeof(banInfo), true);
+
+		int timeLeft = ends - GetTime();
+		if (timeLeft < 86400)
+			CreateBanTimer(client, timeLeft);
 	}
 }
 
@@ -681,15 +820,17 @@ public Action Player_Decal(const char[] name, const int[] clients, int count, fl
 
 	if (client >= 65)
 	{
-		PrintToChat(client, "\x04[Super Spray Handler]\x01 Due to an ongoing TF2 bug involving players with client slots over 64 spraying the wrong spray, you have been blocked from spraying. Sorry!");
-		PrintToChat(client, "\x04[Super Spray Handler]\x01 For more info, see https://github.com/ValveSoftware/Source-1-Games/issues/5266.");
+		CPrintToChat(client, "%s Due to an ongoing TF2 bug involving players with client slots over 64 spraying the wrong spray, you have been blocked from spraying. Sorry!" ,PREFIX);
+		CPrintToChat(client, "%s For more info, see https://github.com/ValveSoftware/Source-1-Games/issues/5266.",PREFIX);
 	}
 
 	//Is this even a valid client?
 	if (IsValidClient(client) && !IsClientReplay(client) && !IsClientSourceTV(client)) {
 		//We need to check if this player is spray banned, and if so, we will pre hook this spray attempt and block it.
-		if (g_bSpraybanned[client]) {
-			PrintToChat(client, "\x04[Super Spray Handler]\x01 Вы были заблокированы и не можете наносить спреи.");
+		char clientKey[16];
+		IntToString(client, clientKey, sizeof(clientKey));
+		if (SpraybansMap.ContainsKey(clientKey)){
+			CPrintToChat(client, "%s%T", PREFIX, "You are SprayBanned Reply", client);
 			return Plugin_Handled;
 		}
 
@@ -702,7 +843,9 @@ public Action Player_Decal(const char[] name, const int[] clients, int count, fl
 			for (int i = 1; i <= MaxClients; i++) {
 				if (IsValidClient(i) && i != client && !CheckForZero(g_fSprayVector[i])) {
 					if (GetVectorDistance(fSprayVector, g_fSprayVector[i]) <= g_arrCVars[ANTIOVERLAP].FloatValue) {
-						PrintToChat(client, "\x04[Super Spray Handler]\x01 Ваш спрей слишком близко к спрею \x05%N\x01.", i);
+						char clientName[MAX_NAME_LENGTH];
+						GetClientName(i, clientName, sizeof clientName);
+						PrintToChat(client ,"%s%T", PREFIX, "Your Spray too close Reply", client, clientName);
 
 						return Plugin_Handled;
 					}
@@ -760,11 +903,11 @@ public void LocationChanged(ConVar hConVar, const char[] szOldValue, const char[
  //What decides what happens when you select the Spray Ban option in the admin menu
 public void AdminMenu_SprayBan(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	if (action == TopMenuAction_DisplayOption) {
-		Format(buffer, maxlength, "%T", "SprayBan", param);
+		Format(buffer, maxlength, "%T", "Menu SprayBan", param);
 	}
 	else if (action == TopMenuAction_SelectOption) {
 		Menu menu = new Menu(MenuHandler_SprayBan);
-		menu.SetTitle("Заблокировать спрей:");
+		menu.SetTitle("%T", "Menu SprayBan", param);
 
 		int count;
 
@@ -772,29 +915,33 @@ public void AdminMenu_SprayBan(TopMenu topmenu, TopMenuAction action, TopMenuObj
 			if (!IsValidClient(i) || IsClientReplay(i) || IsClientSourceTV(i)) {
 				continue;
 			}
-
-			if (g_bSpraybanned[i]) {
+			char targetS[MAX_TARGET_LENGTH];
+			IntToString(i, targetS, sizeof(targetS));
+			
+			if (SpraybansMap.ContainsKey(targetS)) {
 				continue;
 			}
 
-			char info[8];
+			char targetID[8];
 			char name[MAX_NAME_LENGTH];
 
-			IntToString(GetClientUserId(i), info, 8);
+			IntToString(GetClientUserId(i), targetID, sizeof targetID);
 			GetClientName(i, name, MAX_NAME_LENGTH);
 
-			menu.AddItem(info, name);
-
+			menu.AddItem(targetID, name, CanUserTarget(param, i) ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
 			count++;
 		}
 
 		if (!count) {
-			menu.AddItem("none", "No matching players found");
+			char display[64];
+			FormatEx(display, sizeof(display), "%T", "Menu No Targets", param);
+			
+			menu.AddItem("none", display, ITEMDRAW_DISABLED);
 		}
 
 		menu.ExitBackButton = true;
 
-		menu.Display(param, 20);
+		menu.Display(param, MENU_TIME_FOREVER);
 	}
 }
 
@@ -802,10 +949,9 @@ public void AdminMenu_SprayBan(TopMenu topmenu, TopMenuAction action, TopMenuObj
 public int MenuHandler_SprayBan(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
-			char info[8];
-			menu.GetItem(param2, info, 8);
-
-			FakeClientCommand(param1, "sm_sprayban #%d", StringToInt(info));
+			char targetID[8];
+			menu.GetItem(param2, targetID, sizeof targetID);
+			AdminMenu_SpraybanDuration(param1, StringToInt(targetID));
 		}
 		case MenuAction_Cancel: {
 			if (param2 == MenuCancel_ExitBack) {
@@ -816,111 +962,105 @@ public int MenuHandler_SprayBan(Menu menu, MenuAction action, int param1, int pa
 			delete menu;
 		}
 	}
-
 	return 0;
 }
 
-//What is called when you run !sm_sprayban
-public Action Command_Sprayban(int client, int args) {
-	if (!IsValidClient(client)) {
-		return Plugin_Handled;
+void AdminMenu_SpraybanDuration(int client, int target){
+	Menu menu = new Menu(MenuHandler_SpraybanDuration);
+	char buffer[192];
+	menu.SetTitle("%T","Menu Sprayban Duration", client);
+	menu.ExitBackButton = true;
+
+	// duration in days because of GetCmdArgsTTR()
+	int durationArr[] = {1,7, 14, 30,90,365};
+	char durationStr[][] = {"1 день", "7 дней", "2 недели", "1 месяц", "3 месяца", "1 год"};
+
+	for (int i = 0; i < sizeof durationArr; i++)
+	{
+			Format(buffer, sizeof(buffer), "%d;%d",target, durationArr[i]) ; // TargetID index_of_Time
+			menu.AddItem(buffer, durationStr[i]);
 	}
 
-	if (!g_arrCVars[ENABLED].BoolValue) {
-		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
-		return Plugin_Handled;
-	}
-
-	if (!args) {
-		ReplyToCommand(client, "[SM] Usage: sm_sprayban <target>");
-		return Plugin_Handled;
-	}
-
-	char arg1[MAX_TARGET_LENGTH];
-	GetCmdArg(1, arg1, MAX_TARGET_LENGTH);
-
-	int target = FindTarget(client, arg1);
-
-	if (target == -1) {
-		return Plugin_Handled;
-	}
-
-	if (g_bSpraybanned[target]) {
-		ReplyToCommand(client, "[SM] Unable to spray ban %N, reason - already spray banned.", target);
-		return Plugin_Handled;
-	}
-
-	if (g_arrCVars[CONFIRMACTIONS].BoolValue) {
-		DisplayConfirmMenu(client, target, 0);
-	}
-	else {
-		RunSprayBan(client, target);
-	}
-
-	return Plugin_Handled;
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
-//What actually places the spray ban.
-public void RunSprayBan(int client, int target) {
-	char targetName[MAX_NAME_LENGTH];
-	GetClientName(target, targetName, MAX_NAME_LENGTH);
+public int MenuHandler_SpraybanDuration(Menu menu, MenuAction action, int param1, int param2){
+	switch (action)
+	{
+		case MenuAction_End:
+			delete menu;
+		case MenuAction_Cancel:
+		{
+			if (param2 == MenuCancel_ExitBack && g_hAdminMenu != INVALID_HANDLE)
+				g_hAdminMenu.Display(param1, TopMenuPosition_LastCategory);
+		}
+		case MenuAction_Select:
+		{
+			char sOption[192], sTemp[2][64];
+			menu.GetItem(param2, sOption, sizeof(sOption));
+			// TargetID  duration_in_sec
+			ExplodeString(sOption, ";", sTemp, 2, 64);
+			int targetSlot = GetClientOfUserId(StringToInt(sTemp[0]));
 
-	int len = 2*strlen(targetName)+1;
-	char[] targetSafeName = new char[len];
-	g_Database.Escape(targetName, targetSafeName, len);
-
-	char auth[32];
-	if (GetClientAuthId(target, AuthId_Steam2, auth, sizeof auth)) {
-		AddSprayBan(target, auth);
+			if (IsValidClient(targetSlot))
+			{
+				int duration = StringToInt(sTemp[1]);
+				AdminMenu_SpraybanReason(param1, StringToInt(sTemp[0]), duration);
+			}
+		}
 	}
-	else {
-		CreateTimer(5.0, timerAddSprayBan, GetClientUserId(target), TIMER_REPEAT);
-	}
-
-	ReplyToCommand(client, "[SM] Успешно заблокированы спреи игроку %N.", target);
-	PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам заблокировали нанесение спреев.");
-
-	LogAction(client, target, "Spray banned.");
-	ShowActivity(client, "Spray banned %N", target);
-
-	g_fSprayVector[target] = ZERO_VECTOR;
-
-	TE_Start("Player Decal");
-	TE_WriteVector("m_vecOrigin", ZERO_VECTOR);
-	TE_WriteNum("m_nEntity", 0);
-	TE_WriteNum("m_nPlayer", target);
-	TE_SendToAll();
-
-	g_bSpraybanned[target] = true;
-
-	Call_StartForward(g_hBanForward);
-	Call_PushCell(target);
-	Call_Finish();
+	return 0;
 }
 
-public Action timerAddSprayBan(Handle timer, int userid) {
-	int client = GetClientUserId(userid);
-	if (!client) {
-		return Plugin_Stop;
-	}
+void AdminMenu_SpraybanReason(int client, int target, int duration)
+{
+	Menu menu = new Menu(MenuHandler_SpraybanReason);
+	char buffer[192];
+	menu.SetTitle("%T","Menu Sprayban Reason", client);
+	menu.ExitBackButton = true;
 
-	char auth[32];
-	if (GetClientAuthId(client, AuthId_Steam2, auth, sizeof auth)) {
-		AddSprayBan(client, auth);
-		return Plugin_Stop;
-	}
+	char reasons[][] = {"Нацистская символика", "Порнография", "Политика"};
 
-	return Plugin_Continue;
+	for (int i = 0; i < sizeof reasons; i++)
+	{
+			Format(buffer, sizeof(buffer), "%d;%d;%s",target, duration,reasons[i]); // TargetID index_of_Time reason
+			menu.AddItem(buffer, reasons[i]);
+	}
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
-void AddSprayBan(int client, const char[] auth) {
-	char query[256];
-	g_Database.Format(query, sizeof query, "INSERT INTO ssh (auth, name) VALUES ('%s', '%N');", auth, client);
+public int MenuHandler_SpraybanReason(Menu menu, MenuAction action, int param1, int param2)
+{
+	switch (action)
+	{
+		case MenuAction_End:
+			delete menu;
+		case MenuAction_Cancel:
+		{
+			if (param2 == MenuCancel_ExitBack && g_hAdminMenu != INVALID_HANDLE)
+				g_hAdminMenu.Display(param1, TopMenuPosition_LastCategory);
+		}
+		case MenuAction_Select:
+		{
+			char sOption[192], sTemp[3][64];
+			menu.GetItem(param2, sOption, sizeof(sOption));
+			// TargetID  duration_in_sec reason
+			ExplodeString(sOption, ";", sTemp, 3, 64);
+			int target = GetClientOfUserId(StringToInt(sTemp[0]));
 
-	SQL_LockDatabase(g_Database);
-	SQL_FastQuery(g_Database, query);
-	SQL_UnlockDatabase(g_Database);
+			if (IsValidClient(target))
+			{
+				int duration = StringToInt(sTemp[1]);
+				char reason[64];
+				strcopy(reason, sizeof(reason), sTemp[2]);
+				FakeClientCommand(param1, "sm_sban #%s %d %s", sTemp[0], duration, reason);
+			}
+		}
+	}
+	return 0;
 }
+
+
 
 /******************************************************************************************
  *                                 SPRAY UN-BANNING >.>                                   *
@@ -929,37 +1069,45 @@ void AddSprayBan(int client, const char[] auth) {
 //What handles when you select to Un-Spray ban someone
 public void AdminMenu_SprayUnban(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
 	if (action == TopMenuAction_DisplayOption) {
-		Format(buffer, maxlength, "%T","SprayUnban", param);
+		Format(buffer, maxlength, "%T","Menu SprayUnban", param);
 	}
 	else if (action == TopMenuAction_SelectOption) {
 		Menu menu = new Menu(MenuHandler_SprayUnban);
-		menu.SetTitle("Разблокировать спрей:");
+		menu.SetTitle("%T","Menu SprayUnban", param);
 
 		int count;
 
 		for (int i = 1; i <= MaxClients; i++) {
-			if (IsValidClient(i)) {
-				if (g_bSpraybanned[i]) {
-					char info[8];
-					char name[MAX_NAME_LENGTH];
-
-					IntToString(GetClientUserId(i), info, sizeof info);
-					GetClientName(i, name, MAX_NAME_LENGTH);
-
-					menu.AddItem(info, name);
-
-					count++;
-				}
+			if (!IsValidClient(i) || IsClientReplay(i) || IsClientSourceTV(i)) {
+				continue;
 			}
+			char targetS[MAX_TARGET_LENGTH];
+			IntToString(i, targetS, sizeof(targetS));
+			
+			if (!SpraybansMap.ContainsKey(targetS)) {
+				continue;
+			}
+
+			char targetID[8];
+			char name[MAX_NAME_LENGTH];
+
+			IntToString(GetClientUserId(i), targetID, sizeof targetID);
+			GetClientName(i, name, MAX_NAME_LENGTH);
+
+			menu.AddItem(targetID, name, CanUserTarget(param, i) ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
+			count++;
 		}
 
 		if (!count) {
-			menu.AddItem("none", "Не найдено подходящих игроков");
+			char display[64];
+			FormatEx(display, sizeof(display), "%T", "Menu No Targets", param);
+			
+			menu.AddItem("none", display), ITEMDRAW_DISABLED;
 		}
 
 		menu.ExitBackButton = true;
 
-		menu.Display(param, 20);
+		menu.Display(param, MENU_TIME_FOREVER);
 	}
 }
 
@@ -970,7 +1118,7 @@ public int MenuHandler_SprayUnban(Menu menu, MenuAction action, int param1, int 
 			char info[8];
 			menu.GetItem(param2, info, 8);
 
-			FakeClientCommand(param1, "sm_sprayunban #%d", StringToInt(info));
+			FakeClientCommand(param1, "sm_sunban #%d", StringToInt(info));
 		}
 		case MenuAction_Cancel: {
 			if (param2 == MenuCancel_ExitBack) {
@@ -985,132 +1133,11 @@ public int MenuHandler_SprayUnban(Menu menu, MenuAction action, int param1, int 
 	return 0;
 }
 
-//What is called when you run !sm_sprayunban
-Action Command_Sprayunban(int client, int args) {
-	if (!IsValidClient(client)) {
-		return Plugin_Handled;
-	}
-
-	if (!g_arrCVars[ENABLED].BoolValue) {
-		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
-		return Plugin_Handled;
-	}
-
-	if (!args) {
-		ReplyToCommand(client, "[SM] Usage: sm_sprayunban <target>");
-		return Plugin_Handled;
-	}
-
-	char arg1[MAX_TARGET_LENGTH];
-	GetCmdArg(1, arg1, MAX_TARGET_LENGTH);
-
-	int target = FindTarget(client, arg1);
-
-	if (target == -1) {
-		return Plugin_Handled;
-	}
-
-	if (!g_bSpraybanned[target]) {
-		ReplyToCommand(client, "[SM] Unable to spray unban %N, reason - not spray banned.", target);
-		return Plugin_Handled;
-	}
-
-	if (g_arrCVars[CONFIRMACTIONS].BoolValue) {
-		DisplayConfirmMenu(client, target, 1);
-	}
-	else {
-		RunUnSprayBan(client, target);
-	}
-
-	return Plugin_Handled;
-}
-
-//What actually handles un-spraybanning a player.
-public void RunUnSprayBan(int client, int target) {
-	char auth[32];
-	if (!GetClientAuthId(target, AuthId_Steam2, auth, sizeof auth)) {
-		ReplyToCommand(client, "Unable to spray unban %N. Unable to retrieve their steam id. Try again later.", target);
-		return;
-	}
-
-	g_bSpraybanned[target] = false;
-
-	char sQuery[256];
-	FormatEx(sQuery, sizeof sQuery, "DELETE FROM ssh WHERE auth = '%s';", auth);
-
-	SQL_LockDatabase(g_Database);
-	SQL_FastQuery(g_Database, sQuery);
-	SQL_UnlockDatabase(g_Database);
-
-	LogAction(client, target, "Spray unbanned.");
-	ShowActivity(client, "Spray unbanned %N", target);
-
-	Call_StartForward(g_hUnbanForward);
-	Call_PushCell(target);
-	Call_Finish();
-
-	ReplyToCommand(client, "[SM] Успешно разблокированы спереи игрока %N.", target);
-	PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам были разблокированы спреи.");
-}
-
 /******************************************************************************************
  *                              LISTING OUR SPRAYBANNED PLAYERS                           *
  ******************************************************************************************/
 
- //What is called to display the Options Menu
- void DisplayListOptionsMenu(int client) {
-	Menu menu = new Menu(MenuHandler_ListOptions);
-	menu.SetTitle("%T","SprayBanList", LANG_SERVER);
-
-	char title1[64], title2[64];
-	Format(title1, sizeof(title1), "%T", "AllOnlinePlayers", LANG_SERVER);
-	Format(title2, sizeof(title1), "%T", "AllPlayers", LANG_SERVER);
-	
-	menu.AddItem("1", title1);
-	menu.AddItem("2", title2);
-
-	menu.ExitButton = true;
-
-	menu.Display(client, 20);
- }
-
- //Menu Handler for the Options Menu
-int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2) {
-	switch (action) {
-		case MenuAction_Select: {
-			char choice[32];
-			menu.GetItem(param2, choice, sizeof(choice));
-
-			switch (StringToInt(choice)) {
-				case 1: {
-					DisplaySprayBans(param1);
-				}
-				case 2: {
-					g_Database.Query(AllSprayBansCallback, "SELECT * FROM ssh", GetClientSerial(param1));
-				}
-			}
-		}     			
-		case MenuAction_End: {
-			delete menu;
-		}
-	}
-
-	return 0;
-}
-
-//What happens when you select to list currently connected spray banned players?
-void AdminMenu_SprayBans(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
-	switch (action) {
-		case TopMenuAction_DisplayOption: {
-			Format(buffer, maxlength, "%T","SprayBanList", param);
-		}
-		case TopMenuAction_SelectOption: {
-			DisplayListOptionsMenu(param);
-		}
-	}
-}
-
-//What happens when you run !sm_spraybans?
+//What happens when you run sm_spraybans
 public Action Command_Spraybans(int client, int args) {
 	if (!IsValidClient(client)) {
 		return Plugin_Handled;
@@ -1121,25 +1148,84 @@ public Action Command_Spraybans(int client, int args) {
 		return Plugin_Handled;
 	}
 
-	DisplayListOptionsMenu(client);
+	ShowSpraybanListOptions(client);
 
 	return Plugin_Handled;
 }
+ 
+ 
+ //What is called to display the Options Menu
+ void ShowSpraybanListOptions(int client) {
+	Menu menu = new Menu(MenuHandler_ListOptions);
+	menu.SetTitle("%T","Menu SprayBanList", client);
+
+	char title1[64], title2[64];
+	Format(title1, sizeof(title1), "%T", "Menu AllOnlinePlayers", client);
+	Format(title2, sizeof(title1), "%T", "Menu AllPlayers", client);
+	
+	menu.AddItem("1", title1);
+	menu.AddItem("2", title2);
+
+	menu.ExitButton = true;
+
+	menu.Display(client, MENU_TIME_FOREVER);
+ }
+
+//Menu Handler for the Options Menu
+int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2) {
+	switch (action) {
+		case MenuAction_Select: {
+			char choice[32];
+			menu.GetItem(param2, choice, sizeof(choice));
+
+			switch (StringToInt(choice)) {
+				case 1: {
+					DisplayOnlineSprayBans(param1);
+				}
+				case 2: {
+					char query[1024];
+
+					g_Database.Format(query, sizeof(query), "\
+					SELECT `auth`, `name`, `created`, `ends`, `duration`, `adminID`, `reason` \
+					FROM `ssh` WHERE `removedType` IS NULL \
+					AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP())");
+					
+					g_Database.Query(AllSprayBansCallback, query, GetClientUserId(param1));
+				}
+			}
+		}     			
+		case MenuAction_End: {
+			delete menu;
+		}
+	}
+	return 0;
+}
+
+//What happens when you select to list currently connected spray banned players?
+void AdminMenu_SprayBans(TopMenu topmenu, TopMenuAction action, TopMenuObject object_id, int param, char[] buffer, int maxlength) {
+	switch (action) {
+		case TopMenuAction_DisplayOption: {
+			Format(buffer, maxlength, "%T","Menu SprayBanList", param);
+		}
+		case TopMenuAction_SelectOption: {
+			ShowSpraybanListOptions(param);
+		}
+	}
+}
+
 
 //Display the currently connected spray banned players.
-void DisplaySprayBans(int client) {
-	Menu menu = new Menu(MenuHandler_SprayBans);
+void DisplayOnlineSprayBans(int client) {
+	Menu menu = new Menu(MenuHandler_OnlineSprayBans);
 	
-	menu.SetTitle("----------------------------------------------\n"
-	... "Заблокированные игроки\n"
-	... "----------------------------------------------\n"
-	... "(Выберите игрока для разблокировки)");
+	menu.SetTitle("%T","Menu Blocked Players", client);
 
-	int count;
 
 	for (int i = 1; i <= MaxClients; i++) {
 		if (IsValidClient(i)) {
-			if (g_bSpraybanned[i]) {
+			char clientS[MAX_TARGET_LENGTH];
+			IntToString(i, clientS, sizeof clientS);
+			if (SpraybansMap.ContainsKey(clientS)) {
 				char auth[MAX_STEAMAUTH_LENGTH];
 				if (!GetClientAuthId(i, AuthId_Steam2, auth, sizeof auth)) {
 					strcopy(auth, sizeof auth, "SteamID Unavailable");
@@ -1148,499 +1234,133 @@ void DisplaySprayBans(int client) {
 				char name[MAX_NAME_LENGTH];
 				GetClientName(i, name, sizeof name);
 
-				char Display[128];
-				FormatEx(Display, sizeof Display, "%s - %s", name, auth);
+				int info = GetClientUserId(i);
+				char infoS[64];
+				
+				IntToString(info, infoS, sizeof(infoS));
 
-				char info[64];
-				IntToString(i, info, sizeof(info));
-
-				menu.AddItem(info, Display);
-
-				count++;
+				menu.AddItem(infoS, name);
 			}
 		}
 	}
-
-	if (!count) {
-		menu.AddItem("none", "Нет игроков с блокировкой спреев.");
+	if (menu.ItemCount == 0) {
+		char display[64];
+		FormatEx(display, sizeof(display), "%T", "Menu No Targets", client);
+		menu.AddItem("none", display, ITEMDRAW_DISABLED);
 	}
-
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 
-	menu.Display(client, 20);
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
 //Menu HAndler for the spray bans menu
-int MenuHandler_SprayBans(Menu menu, MenuAction action, int param1, int param2) {
+int MenuHandler_OnlineSprayBans(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
-			if (!CheckCommandAccess(param1, "sm_sprayunban", ADMFLAG_UNBAN)) {
-				return 0;
-			}
 
-			char info[32];
-			menu.GetItem(param2, info, 32);
-
+			char info[MAX_TARGET_LENGTH];
+			menu.GetItem(param2, info, MAX_TARGET_LENGTH);
 			int target = StringToInt(info);
 
-			char auth[MAX_STEAMAUTH_LENGTH];
-			if (!GetClientAuthId(target, AuthId_Steam2, auth, sizeof auth)) {
-				PrintToChat(param1, "Unable to spray unban %N. Steam id unavailable. Try again later.", target);
-				return 0;
-			}
-
-			char name[MAX_NAME_LENGTH];
-			GetClientName(target, name, sizeof(name));
-
-
-
-			if (!StrEqual(info, "none")) {
-				Menu menu2 = new Menu(MenuHandler_Spraybans_Ban);
-				menu2.SetTitle("Вы уверены что хотите разблокировать спреи %s (%s)?", name, auth);
-
-				menu2.AddItem(info, "Yes");
-				menu2.AddItem("none", "No");
-
-				menu2.ExitBackButton = true;
-
-				menu2.Display(param1, 20);
-			}
+			FakeClientCommand(param1, "sm_spraystatus #%d", target);
 		}
 		case MenuAction_Cancel: {
 			if (param2 == MenuCancel_ExitBack) {
-				DisplayListOptionsMenu(param1);
+				ShowSpraybanListOptions(param1);
 			}
 		}
 		case MenuAction_End: {
 			delete menu;
 		}
 	}
-
 	return 0;
 }
 
-//Menu HAndler for the un-banning part of the list.
-int MenuHandler_Spraybans_Ban(Menu menu, MenuAction action, int param1, int param2) {
-	switch (action) {
-		case MenuAction_Select: {
-			char info[32];
-			menu.GetItem(param2, info, 32);
-
-			int target = StringToInt(info);
-
-			if (!StrEqual(info, "none")) {
-				RunUnSprayBan(param1, target);
-			}
-			else {
-				DisplaySprayBans(param1);
-			}
-		}
-		case MenuAction_Cancel: {
-			if (param2 == MenuCancel_ExitBack) {
-				Command_Spraybans(param1, -1);
-			}
-		}
-		case MenuAction_End: {
-			delete menu;
-		}
-	}
-
-	return 0;
-}
-
-//What is called to list all the spray bans there are in yoru database
-//public void AllSprayBansCallback(Handle owner, Handle hndl, const char[] error, any data) {
+//What is called to list all the spray bans there are in a database
 void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, any data) {
 	if (!db || !results || error[0]) {
 		LogError("SQL error in Listing All Spray Bans: %s", error);
 		return;
 	}
 
-	int client = GetClientFromSerial(data);
+	int client = GetClientOfUserId(data);
 
 	if (!IsValidClient(client)) {
 		return;
 	}
-
+	
 	Menu menu = new Menu(MenuHandler_AllSpraybans);
-	menu.SetTitle("----------------------------------------------\n"
-	... "Заблокированные игроки\n"
-	... "----------------------------------------------\n"
-	... "(Выберите игрока для разблокировки)");
+	menu.SetTitle("%T","Menu Blocked Players", client);
+	
+	if (results.HasResults && results.RowCount){
+		char auth[MAX_STEAMAUTH_LENGTH],
+		name[MAX_NAME_LENGTH],
+		admID[MAX_AUTHID_LENGTH],
+		reason[64],
+		info[256];
+		int createdTime, endsTime, duration;
 
-	while (results.FetchRow()) {
-		char auth[MAX_STEAMAUTH_LENGTH];
-		results.FetchString(0, auth, MAX_STEAMAUTH_LENGTH);
+	//SELECT `auth`, `name`, `created`, `ends`, `duration`, `adminID`, `reason` 
+		while(results.FetchRow()){
+			results.FetchString(0, auth, sizeof(auth));
+			results.FetchString(1, name, sizeof(name));
+			createdTime = results.FetchInt(2);
+			endsTime = results.FetchInt(3);
+			duration = results.FetchInt(4);
+			results.FetchString(5, admID, sizeof(admID));
+			results.FetchString(6, reason, sizeof(reason));
+			
+			FormatEx(info,sizeof info, "%s;%s;%d;%d;%d;%s;%s", auth, name, createdTime, endsTime, duration, admID, reason);
 
-		char auth2[MAX_STEAMAUTH_LENGTH];
-		FormatEx(auth2, MAX_STEAMAUTH_LENGTH, auth);
-		ReplaceString(auth2, MAX_STEAMAUTH_LENGTH, "STEAM_", "", false);
-
-		char name[MAX_NAME_LENGTH];
-		results.FetchString(1, name, MAX_NAME_LENGTH);
-		ReplaceString(name, MAX_NAME_LENGTH, ";", "", false);
-
-		char Display[128];
-		FormatEx(Display, sizeof Display, "%s - %s", name, auth);
-
-		char info[64];
-		FormatEx(info, sizeof info, "%s;%s", name, auth);
-
-		// debug
-		//PrintToChat(client, "%s", info);
-
-		menu.AddItem(info, Display);
+			char display[64];
+			FormatEx(display, sizeof(display), "%s - %s", auth, name);
+			
+			menu.AddItem(info, display);
+		}	
 	}
 
 	if (!menu.ItemCount) {
-		menu.AddItem("none", "Нет игроков с блокировкой спреев.");
+		char display[64];
+		FormatEx(display, sizeof(display), "%T", "Menu No Targets", client);
+		menu.AddItem("none", display, ITEMDRAW_DISABLED);
 	}
-
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 
-	menu.Display(client, 20);
-
-	delete results;
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
 //Menu Handler for the full list of spray banned players
 public int MenuHandler_AllSpraybans(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
-			if (CheckCommandAccess(param1, "sm_sprayunban", ADMFLAG_UNBAN, false)) {
-				char info[64];
-				menu.GetItem(param2, info, 64);
-				//PrintToChat(param1, "%s", info);
+			char infoBuf[256], temp[7][32], name[MAX_NAME_LENGTH];
+			menu.GetItem(param2, infoBuf, sizeof(infoBuf));
+			ExplodeString(infoBuf, ";", temp, 7, 32);
+			
+			//SELECT `auth`, `name`, `created`, `ends`, `duration`, `adminID`, `reason` 
+			SprayBan banInfo;
+			strcopy(banInfo.auth, sizeof(banInfo.auth), temp[0]);
+			strcopy(name, sizeof(name), temp[1]);
+			banInfo.startTime = StringToInt(temp[2]);
+			banInfo.endTime = StringToInt(temp[3]);
+			banInfo.length = StringToInt(temp[4]);
+			strcopy(banInfo.adminSteamID, sizeof(banInfo.adminSteamID), temp[5]);
+			strcopy(banInfo.reason, sizeof(banInfo.reason), temp[6]);
 
-				if (!StrEqual(info, "none")) {
-					char tokens[64][64];
-					ExplodeString(info, ";", tokens, sizeof(tokens), sizeof(tokens[]));
-
-					//PrintToChat(param1, "%i", sizeof(tokens));
-					//PrintToChat(param1, "%s", tokens[1]);
-
-					Menu menu2 = new Menu(MenuHandler_AllSpraybans_Ban);
-					menu2.SetTitle("Вы уверены что хотите разблокировать спреи %s (%s)?", tokens[0], tokens[1]);
-
-					menu2.AddItem(tokens[1], "Yes");
-					menu2.AddItem("none", "No");
-
-					menu2.ExitBackButton = true;
-
-					menu2.Display(param1, 20);
-				}
-			}
+			ShowBlockMenu(param1, banInfo, name);
 		}
 		case MenuAction_Cancel: {
 			if (param2 == MenuCancel_ExitBack) {
-				DisplayListOptionsMenu(param1);
+				ShowSpraybanListOptions(param1);
 			}
 		}
 		case MenuAction_End: {
 			delete menu;
 		}
 	}
-
 	return 0;
-}
-
-//Unbanning handler for the all spray bans menu
-public int MenuHandler_AllSpraybans_Ban(Menu menu, MenuAction action, int param1, int param2) {
-	switch (action) {
-		case MenuAction_Select: {
-			char info[32];
-			menu.GetItem(param2, info, 32);
-
-			if (!StrEqual(info, "none")) {
-				char sQuery[128];
-				FormatEx(sQuery, sizeof sQuery, "DELETE FROM ssh WHERE auth = '%s'", info);
-
-				DataPack pack = new DataPack();
-				pack.WriteCell(GetClientSerial(param1));
-				pack.WriteString(info);
-
-				g_Database.Query(Offlinebans_UnbanCallback, sQuery, pack);
-			}
-
-			else {
-				g_Database.Query(AllSprayBansCallback, "SELECT * FROM ssh", GetClientSerial(param1));
-			}
-		}
-		case MenuAction_Cancel: {
-			if (param2 == MenuCancel_ExitBack) {
-				g_Database.Query(AllSprayBansCallback, "SELECT * FROM ssh", GetClientSerial(param1));
-			}
-		}
-		case MenuAction_End: {
-			delete menu;
-		}
-	}
-
-	return 0;
-}
-
-/******************************************************************************************
- *                               OFFLINE SPRAY BANNING                                    *
- ******************************************************************************************/
-
-//Its like spray-banning, but offline...Allows you to target offline clients.
-public Action Command_OfflineSprayban(int client, int args)
-{
-	if (client != 0 && !IsValidClient(client))
-	{
-		PrintToServer("[SM] Invalid client [%i] called Command_OfflineSprayban?", client);
-		return Plugin_Handled;
-	}
-
-	if (!g_arrCVars[ENABLED].BoolValue) {
-		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
-		return Plugin_Handled;
-	}
-
-	if (!args) {
-		ReplyToCommand(client, "[SM] Usage: sm_offlinesprayban <\"steamid\"> [name]");
-		return Plugin_Handled;
-	}
-
-
-	char authp1[MAX_STEAMAUTH_LENGTH];
-	GetCmdArg(1, authp1, MAX_STEAMAUTH_LENGTH);
-
-	char authp2[MAX_STEAMAUTH_LENGTH];
-	GetCmdArg(2, authp2, MAX_STEAMAUTH_LENGTH);
-
-	char authp3[MAX_STEAMAUTH_LENGTH];
-	GetCmdArg(3, authp3, MAX_STEAMAUTH_LENGTH);
-
-	char authp4[MAX_STEAMAUTH_LENGTH];
-	GetCmdArg(4, authp4, MAX_STEAMAUTH_LENGTH);
-
-	char authp5[MAX_STEAMAUTH_LENGTH];
-	GetCmdArg(5, authp5, MAX_STEAMAUTH_LENGTH);
-
-	char auth[MAX_STEAMAUTH_LENGTH];
-	Format(auth, MAX_STEAMAUTH_LENGTH, "%s%s%s%s%s", authp1, authp2, authp3, authp4, authp5);
-
-	if (args == 1 && !StrEqual(auth, "STEAM_")) {
-		ReplyToCommand(client, "[SM] Invalid SteamID. Valid SteamIDs are formmated in this way - STEAM_A:B:XXXXXXX.");
-
-		return Plugin_Handled;
-	}
-
-	char targetName[MAX_NAME_LENGTH];
-	FormatEx(targetName, MAX_NAME_LENGTH, "<unknown>");
-
-	if (args >= 6) {
-		GetCmdArg(6, targetName, MAX_NAME_LENGTH);
-	}
-
-	int len = 2*strlen(targetName)+1;
-	char[] targetSafeName = new char[len];
-	SQL_LockDatabase(g_Database);
-	g_Database.Escape(targetName, targetSafeName, len);
-	SQL_UnlockDatabase(g_Database);
-
-	char Driver[64];
-	SQL_ReadDriver(g_Database, Driver, sizeof(Driver));
-	//PrintToChat(client, "%s", Driver);
-
-	char sQuery[256];
-	if (StrEqual(Driver, "mysql")) {
-		FormatEx(sQuery, sizeof sQuery, "INSERT INTO ssh (auth, name) VALUES ('%s', '%s') ON DUPLICATE KEY UPDATE name = '%s';", auth,  targetSafeName, targetSafeName);
-	}
-	else {
-		FormatEx(sQuery, sizeof sQuery, "INSERT OR REPLACE INTO ssh (auth, name) VALUES ('%s', COALESCE((SELECT name FROM ssh WHERE auth = '%s'), '%s'))", auth, auth, targetSafeName);
-	}
-	//PrintToChat(client, "%s", sQuery);
-
-	SQL_LockDatabase(g_Database);
-	SQL_FastQuery(g_Database, sQuery);
-	SQL_UnlockDatabase(g_Database);
-
-	ShowActivity(client, "Заблокироввны спреи игрока %s. (%s)", targetSafeName, auth);
-
-	int target = -1;
-
-	for (int i = 1; i <= MaxClients; i++) {
-		if (IsValidClient(i)) {
-			char sAuth[32];
-			if (!GetClientAuthId(i, AuthId_Steam2, sAuth, sizeof sAuth)) {
-				continue;
-			}
-
-			if (StrEqual(sAuth, auth)) {
-				target = i;
-
-				break;
-			}
-		}
-	}
-
-	if (target != -1) {
-		g_fSprayVector[target] = ZERO_VECTOR;
-
-		TE_Start("Player Decal");
-		TE_WriteVector("m_vecOrigin", ZERO_VECTOR);
-		TE_WriteNum("m_nEntity", 0);
-		TE_WriteNum("m_nPlayer", target);
-		TE_SendToAll();
-
-		g_bSpraybanned[target] = true;
-
-		Call_StartForward(g_hBanForward);
-		Call_PushCell(target);
-		Call_Finish();
-
-		LogAction(client, target, "Spray banned.");
-
-		PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам были заблокированы спреи.");
-	}
-
-	return Plugin_Handled;
-}
-
-/******************************************************************************************
- *                              OFFLINE UN-SPRAY BANNING                                  *
- ******************************************************************************************/
-
- //Its like spray-unbanning, but offline...Allows you to target offline clients.
-public void Offlinebans_UnbanCallback(Database db, DBResultSet results, const char[] error, DataPack dp) {
-	if (!db || !results || error[0]) {
-		delete dp;
-		LogError("SQL error in MenuHandler_AllSpraybans_Ban: %s", error);
-		return;
-	}
-
-	dp.Reset();
-
-	int client = GetClientFromSerial(dp.ReadCell());
-
-	char auth[MAX_STEAMAUTH_LENGTH];
-	dp.ReadString(auth, MAX_STEAMAUTH_LENGTH);
-
-	delete dp;
-
-	if (!IsValidClient(client)) {
-		return;
-	}
-
-	LogToFile("addons/sourcemod/logs/ssh.log", "%L: Spray unbanned %s.", client, auth);
-
-	int target = -1;
-
-	for (int i = 1; i <= MaxClients; i++) {
-		if (IsValidClient(i)) {
-			char sAuth[32];
-			if (!GetClientAuthId(i, AuthId_Steam2, sAuth, sizeof sAuth)) {
-				continue;
-			}
-
-			if (StrEqual(sAuth, auth)) {
-				target = i;
-
-				break;
-			}
-		}
-	}
-
-	if (target != -1) {
-		g_bSpraybanned[target] = false;
-
-		Call_StartForward(g_hUnbanForward);
-		Call_PushCell(target);
-		Call_Finish();
-
-		PrintToChat(target, "\x04[Super Spray Handler]\x01 Вам были разблокированы спреи.");
-	}
-
-	delete results;
-}
-
-/******************************************************************************************
- *                                         NATIVES                                        *
- ******************************************************************************************/
-
- //Native to spray-ban a client.
-public int Native_BanClient(Handle plugin, int numParams) {
-	int client = GetNativeCell(1);
-
-	if (!IsValidClient(client)) {
-		ThrowError("Player index %d is invalid.", client);
-	}
-
-	if (g_bSpraybanned[client]) {
-		ThrowError("Player index %d is already spray banned.", client);
-	}
-
-	char auth[32];
-	if (!GetClientAuthId(client, AuthId_Steam2, auth, sizeof auth)) {
-		CreateTimer(5.0, timerAddSprayBan, GetClientUserId(client), TIMER_REPEAT);
-	}
-	else {
-		AddSprayBan(client, auth);
-	}
-
-	if (!!GetNativeCell(2)) {
-		TE_Start("Player Decal");
-		TE_WriteVector("m_vecOrigin", ZERO_VECTOR);
-		TE_WriteNum("m_nEntity", 0);
-		TE_WriteNum("m_nPlayer", client);
-		TE_SendToAll();
-
-		g_fSprayVector[client] = ZERO_VECTOR;
-	}
-
-	g_bSpraybanned[client] = true;
-
-	PrintToChat(client, "\x04[Super Spray Handler]\x01 Вам были заблокированы спреи.");
-
-	return 0;
-}
-
-//Native to un-sprayban a client.
-public int Native_UnbanClient(Handle plugin, int numParams) {
-	int client = GetNativeCell(1);
-
-	if (!IsValidClient(client)) {
-		ThrowError("Player index %d is invalid.", client);
-	}
-
-	if (!g_bSpraybanned[client]) {
-		ThrowError("Player index %d is not spray banned.", client);
-	}
-
-	char auth[32];
-	if (!GetClientAuthId(client, AuthId_Steam2, auth, sizeof auth)) {
-		// Should probably notify client calling native.
-		return 0;
-	}
-
-	char sQuery[256];
-	FormatEx(sQuery, 256, "DELETE FROM ssh WHERE auth = '%s';", auth);
-
-	SQL_LockDatabase(g_Database);
-	SQL_FastQuery(g_Database, sQuery);
-	SQL_UnlockDatabase(g_Database);
-
-	g_bSpraybanned[client] = false;
-
-	PrintToChat(client, "\x04[Super Spray Handler]\x01 Вам были разблокированы спреи.");
-
-	return 0;
-}
-
-//Native to check if a client is spray banned.
-public int Native_IsBanned(Handle plugin, int numParams) {
-	int client = GetNativeCell(1);
-
-	if (!IsValidClient(client)) {
-		ThrowError("Player index %i is invalid.", client);
-		return 0;
-	}
-
-	return g_bSpraybanned[client];
 }
 
 /******************************************************************************************
@@ -1668,6 +1388,12 @@ stock void CreateTimers() {
 
 //What happens when you run the !sm_spraytrace command?
 public Action Command_TraceSpray(int client, int args) {
+	
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
 	if (!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
@@ -1680,29 +1406,31 @@ public Action Command_TraceSpray(int client, int args) {
 		{
 			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue)
 			{
-				int time = RoundFloat(GetGameTime()) - g_arrSprayTime[i];
+				
 
-				PrintToChat(client, "[SSH] %T", "Spray By", client, g_arrSprayName[i], g_arrSprayID[i], time);
+				CPrintToChat(client, "%s%T", PREFIX, "Spray By", client, g_arrSprayName[i], (RoundFloat(GetGameTime() - g_arrSprayTime[i])));
 				//GlowEffect(client, g_fSprayVector[i], 2.0, 0.3, 255, g_PrecacheRedGlow);
 
 				if (!highMaxPlayers)
 				{
 					//showTraceSquare(g_fSprayVector[i], i, client);
 				}
-				PunishmentMenu(client, i);
+
+				if (CanUserTarget(client, i))
+					PunishmentMenu(client, i);
 
 				return Plugin_Handled;
 			}
 		}
 	}
 
-	PrintToChat(client, "[SSH] %T", "No Spray", client);
+	CPrintToChat(client,"%s%T", PREFIX, "No Spray", client);
 
 	return Plugin_Handled;
 }
 
-void showTraceSquare(float vec[3], int client, int lookingclient)
-{
+//Crashes the client on some servers
+void showTraceSquare(float vec[3], int client, int lookingclient){
 	// get normal angle for this spray
 	float vnormal[3];
 	vnormal = NormalForSpray[client];
@@ -1998,7 +1726,7 @@ public void AdminMenu_TraceSpray(TopMenu hTopMenu, TopMenuAction action, TopMenu
 
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			Format(szBuffer, iMaxLength, "%T", "Trace", param);
+			Format(szBuffer, iMaxLength, "%T", "Menu Trace", param);
 		}
 		case TopMenuAction_SelectOption: {
 			Command_TraceSpray(param, 0);
@@ -2010,8 +1738,14 @@ public void AdminMenu_TraceSpray(TopMenu hTopMenu, TopMenuAction action, TopMenu
  *                                    REMOVING SPRAYS                                     *
  ******************************************************************************************/
 
- //What happens when you run !sm_removespray?
+ //What happens when you run sm_removespray?
 public Action Command_RemoveSpray(int client, int args) {
+	
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
 	if (!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
@@ -2025,16 +1759,18 @@ public Action Command_RemoveSpray(int client, int args) {
 
 		for (int i = 1; i <= MaxClients; i++) {
 			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue) {
-				float vecEndPos[3];
+								
+				if(!CanUserTarget(client, i)){
+					char iName[MAX_NAME_LENGTH];
+					GetClientName(i, iName, sizeof iName);
+					CReplyToCommand(client, "%s%T", PREFIX, "Admin Immune", client, iName);
+					return Plugin_Handled;
+				}			
+				
+				SprayNullDecal(i);
 
-				PrintToChat(client, "[SSH] %T", "Spray By", client, g_arrSprayName[i], g_arrSprayID[i], RoundFloat(GetGameTime()) - g_arrSprayTime[i]);
-
-				SprayDecal(i, 0, vecEndPos);
-
-				g_fSprayVector[i] = ZERO_VECTOR;
-
-				PrintToChat(client, "[SSH] %T", "Spray Removed", client, g_arrSprayName[i], g_arrSprayID[i], szAdminName);
-				LogAction(client, -1, "[SSH] %T", "Spray Removed", LANG_SERVER, g_arrSprayName[i], g_arrSprayID[i], szAdminName);
+				CPrintToChat(client, "%s%T", PREFIX, "Spray Removed", client, g_arrSprayName[i], szAdminName);
+				//LogAction(client, -1, "[SSH] %T", "Spray Removed", LANG_SERVER, g_arrSprayName[i], g_arrSprayID[i], szAdminName);
 				PunishmentMenu(client, i);
 
 				return Plugin_Handled;
@@ -2042,7 +1778,7 @@ public Action Command_RemoveSpray(int client, int args) {
 		}
 	}
 
-	PrintToChat(client, "[SSH] %T", "No Spray", client);
+	CPrintToChat(client, "%s%T", PREFIX, "No Spray", client);
 
 	return Plugin_Handled;
 }
@@ -2055,7 +1791,7 @@ public void AdminMenu_SprayRemove(TopMenu hTopMenu, TopMenuAction action, TopMen
 
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			Format(szBuffer, iMaxLength, "%T", "Remove", param);
+			Format(szBuffer, iMaxLength, "%T", "Menu Remove", param);
 		}
 		case TopMenuAction_SelectOption: {
 			Command_RemoveSpray(param, 0);
@@ -2069,6 +1805,12 @@ public void AdminMenu_SprayRemove(TopMenu hTopMenu, TopMenuAction action, TopMen
 
  //What happens when you run !sm_qremovespray?
 public Action Command_QuickRemoveSpray(int client, int args) {
+	
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
 	if (!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
@@ -2082,23 +1824,25 @@ public Action Command_QuickRemoveSpray(int client, int args) {
 
 		for (int i = 1; i <= MaxClients; i++) {
 			if (GetVectorDistance(vecPos, g_fSprayVector[i]) <= g_arrCVars[MAXDIS].FloatValue) {
-				float vecEndPos[3];
+				
+				if(!CanUserTarget(client, i)){
+					char iName[MAX_NAME_LENGTH];
+					GetClientName(i, iName, sizeof iName);
+					CReplyToCommand(client, "%s%T", PREFIX, "Admin Immune", client, iName);
+					return Plugin_Handled;
+				}
 
-				PrintToChat(client, "[SSH] %T", "Spray By", client, g_arrSprayName[i], g_arrSprayID[i], RoundFloat(GetGameTime()) - g_arrSprayTime[i]);
+				SprayNullDecal(i);
 
-				SprayDecal(i, 0, vecEndPos);
-
-				g_fSprayVector[i] = ZERO_VECTOR;
-
-				PrintToChat(client, "[SSH] %T", "Spray Removed", client, g_arrSprayName[i], g_arrSprayID[i], szAdminName);
-				LogAction(client, -1, "[SSH] %T", "Spray Removed", LANG_SERVER, g_arrSprayName[i], g_arrSprayID[i], szAdminName);
+				CPrintToChat(client, "%s%T", PREFIX, "Spray Removed", client, g_arrSprayName[i], szAdminName);
+				//LogAction(client, -1, "[SSH] %T", "Spray Removed", LANG_SERVER, g_arrSprayName[i], g_arrSprayID[i], szAdminName);
 
 				return Plugin_Handled;
 			}
 		}
 	}
 
-	PrintToChat(client, "[SSH] %T", "No Spray", client);
+	CPrintToChat(client, "%s%T", PREFIX, "No Spray", client);
 
 	return Plugin_Handled;
 }
@@ -2111,7 +1855,7 @@ public void AdminMenu_QuickSprayRemove(TopMenu hTopMenu, TopMenuAction action, T
 
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			Format(szBuffer, iMaxLength, "%T","QuickRemove", param);
+			Format(szBuffer, iMaxLength, "%T","Menu QuickRemove", param);
 		}
 		case TopMenuAction_SelectOption: {
 			Command_QuickRemoveSpray(param, 0);
@@ -2125,24 +1869,24 @@ public void AdminMenu_QuickSprayRemove(TopMenu hTopMenu, TopMenuAction action, T
  ******************************************************************************************/
 
 public Action Command_RemoveAllSprays(int client, int args) {
+	
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
 	if (!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
 
-	char szAdminName[MAX_NAME_LENGTH];
-
-	GetClientName(client, szAdminName, sizeof szAdminName);
-
 	for (int i = 1; i <= MaxClients; i++) {
-		float vecEndPos[3];
-
-		SprayDecal(i, 0, vecEndPos);
-
-		g_fSprayVector[i] = ZERO_VECTOR;
+		SprayNullDecal(i);
 	}
 
-	PrintToChat(client, "[SSH] %T", "Sprays Removed", client, szAdminName);
-	LogAction(client, -1, "[SSH] %T", "Sprays Removed", LANG_SERVER, szAdminName);
+	char AdminName[MAX_NAME_LENGTH];
+	GetClientName(client, AdminName, sizeof AdminName);
+	LogAction(client, -1, "All sprays has been removed by %L", client);
+	CShowActivity2(client, "", "%s%T", PREFIX, "AllSpraysRemoved",client, AdminName);
 
 	return Plugin_Handled;
 }
@@ -2155,7 +1899,7 @@ public void AdminMenu_RemoveAllSprays(TopMenu hTopMenu, TopMenuAction action, To
 
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			Format(szBuffer, iMaxLength, "%T","RemoveAll", param);
+			Format(szBuffer, iMaxLength, "%T","Menu RemoveAll", param);
 		}
 		case TopMenuAction_SelectOption: {
 			Command_RemoveAllSprays(param, 0);
@@ -2170,31 +1914,37 @@ public void AdminMenu_RemoveAllSprays(TopMenu hTopMenu, TopMenuAction action, To
 
 //What happens when you run the !sm_adminspray <target> command.
 public Action Command_AdminSpray(int client, int args) {
-	if (!IsValidClient(client)) {
-		if (client == 0) {
-			ReplyToCommand(client, "[SSH] Command is in-game only.");
-		}
+	
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
 		return Plugin_Handled;
 	}
+	
+	if (!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+
 	char arg[MAX_NAME_LENGTH];
 	int target = client;
 	if (args >= 1) {
 		GetCmdArg(1, arg, sizeof arg);
 
 		target = FindTarget(client, arg, false, false);
-
-		if (!IsValidClient(target)) {
-			//ReplyToCommand(client, "[SSH] %T", "Could Not Find Name", client, arg);
+		if (target == -1) 
 			return Plugin_Handled;
-		}
+		
 	}
 
 	if (!GoSpray(client, target)) {
-		ReplyToCommand(client, "%s[SSH] %T", GetCmdReplySource() == SM_REPLY_TO_CHAT ? "\x04" : "", "Cannot Spray", client);
+		CReplyToCommand(client, "%s%T", PREFIX, "Cannot Spray", client);
 	}
 	else {
-		ReplyToCommand(client, "%s[SSH] %T", GetCmdReplySource() == SM_REPLY_TO_CHAT ? "\x04" : "", "Admin Sprayed", client, client, target);
-		LogAction(client, -1, "[SSH] %T", "Admin Sprayed", LANG_SERVER, client, target);
+		char clientName[MAX_NAME_LENGTH], targetName[MAX_NAME_LENGTH];
+		GetClientName(client, clientName, sizeof(clientName));
+		GetClientName(target, targetName, sizeof(targetName));
+
+		CReplyToCommand(client, "%s%T", PREFIX, "Admin Sprayed", client, clientName, targetName);
+		//LogAction(client, -1, "[SSH] %T", "Admin Sprayed", LANG_SERVER, client, target);
 	}
 
 	return Plugin_Handled;
@@ -2211,9 +1961,13 @@ void DisplayAdminSprayMenu(int client, int iPos = 0) {
 	menu.SetTitle("%T", "Admin Spray Menu", client);
 	menu.ExitBackButton = true;
 
+	int targetCount;
+
 	for (int i = 1; i <= MaxClients; i++) {
 			if (IsValidClient(i)) {
-				if (!g_bSpraybanned[i]) {
+				char iChar[MAX_TARGET_LENGTH];
+				IntToString(i, iChar, MAX_TARGET_LENGTH);
+				if (!SpraybansMap.ContainsKey(iChar)) {
 					if (!IsClientReplay(i) && !IsClientSourceTV(i)) {
 						char info[8];
 						char name[MAX_NAME_LENGTH];
@@ -2221,11 +1975,18 @@ void DisplayAdminSprayMenu(int client, int iPos = 0) {
 						IntToString(GetClientUserId(i), info, 8);
 						GetClientName(i, name, MAX_NAME_LENGTH);
 
-						menu.AddItem(info, name);
+						menu.AddItem(info, name, (CanUserTarget(client, i) ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED));
+						targetCount++;
 					}
 				}
 			}
 		}
+	if (!targetCount){
+		char display[64];
+		FormatEx(display, sizeof(display), "%T", "Menu No Targets", client);
+		menu.AddItem("none", display, ITEMDRAW_DISABLED);	
+	}
+		
 	if (iPos == 0) {
 		menu.Display(client, MENU_TIME_FOREVER);
 	}
@@ -2248,15 +2009,24 @@ public int MenuHandler_AdminSpray(Menu menu, MenuAction action, int param1, int 
 			menu.GetItem(param2, info, sizeof(info));
 
 			target = GetClientOfUserId(StringToInt(info));
+			char targetS[MAX_TARGET_LENGTH];
+			IntToString(target, targetS, MAX_TARGET_LENGTH);
 
 			if (target == 0 || !IsClientInGame(target)) {
-				PrintToChat(param1, "[SSH] %T", "Could Not Find", param1);
+				CPrintToChat(param1,"%s%T", PREFIX, "Could Not Find", param1);
 			}
-			else if (g_bSpraybanned[target]) {
-				PrintToChat(param1, "[SSH] %T", "Player is Spray Banned", param1);
+			else if (SpraybansMap.ContainsKey(targetS)) {
+				char targetName[MAX_NAME_LENGTH];
+				GetClientName(target, targetName, sizeof(targetName));
+				CPrintToChat(param1, "%s%T", PREFIX, "Player is Spray Banned", param1, targetName);
 			}
 			else {
 				GoSpray(param1, target);
+				char clientName[MAX_NAME_LENGTH], targetName[MAX_NAME_LENGTH];
+				GetClientName(param1, clientName, sizeof(clientName));
+				GetClientName(param1, targetName, sizeof(targetName));
+
+				CReplyToCommand(param1, "%s%T", PREFIX, "Admin Sprayed", param1, clientName, targetName);
 			}
 
 			DisplayAdminSprayMenu(param1, menu.Selection);
@@ -2282,7 +2052,7 @@ public void AdminMenu_AdminSpray(TopMenu hTopMenu, TopMenuAction action, TopMenu
 
 	switch (action) {
 		case TopMenuAction_DisplayOption: {
-			Format(szBuffer, iMaxLength, "%T", "AdminSpray", param);
+			Format(szBuffer, iMaxLength, "%T", "Admin Spray Menu", param);
 		}
 		case TopMenuAction_SelectOption: {
 			DisplayAdminSprayMenu(param);
@@ -2334,6 +2104,24 @@ void SprayDecal(int client, int entIndex, float vecPos[3], bool checkValid=true)
 	TE_SendToAll();
 }
 
+//Called to spray a NULL players decal. Used for deleting spray.
+void SprayNullDecal(int client){
+	if (!IsValidClient(client))
+	{
+		return;
+	}
+
+	float vecPos[3];
+
+	g_fSprayVector[client] = ZERO_VECTOR;
+
+	TE_Start("Player Decal");
+	TE_WriteVector("m_vecOrigin", vecPos);
+	TE_WriteNum("m_nEntity", 0);
+	TE_WriteNum("m_nPlayer", client);
+	TE_SendToAll();
+}
+
 /******************************************************************************************
  *                                    PUNISHMENT MENU                                     *
  ******************************************************************************************/
@@ -2347,7 +2135,7 @@ public Action PunishmentMenu(int client, int sprayer) {
 	g_arrMenuSprayID[client] = g_arrSprayID[sprayer];
 	Menu hMenu = new Menu(PunishmentMenuHandler);
 
-	hMenu.SetTitle("%T", "Title", client, g_arrSprayName[sprayer], g_arrSprayID[sprayer], RoundFloat(GetGameTime()) - g_arrSprayTime[sprayer]);
+	hMenu.SetTitle("%T", "Title", client, g_arrSprayName[sprayer], g_arrSprayID[sprayer], (RoundFloat(GetGameTime() - g_arrSprayTime[sprayer])));
 
 
 	//Makes life simpler later
@@ -2366,7 +2154,7 @@ public Action PunishmentMenu(int client, int sprayer) {
 	bool useTimeBomb = (g_arrCVars[USETIMEBOMB].BoolValue) && (isRestricted ? CheckCommandAccess(client, "sm_timebomb", ADMFLAG_SLAY, false) : true);
 	bool useDrug = (g_arrCVars[DRUGTIME].IntValue > 0) && (isRestricted ? CheckCommandAccess(client, "sm_drug", ADMFLAG_SLAY, false) : true);
 	bool useKick = (g_arrCVars[USEKICK].BoolValue) && (isRestricted ? CheckCommandAccess(client, "sm_kick", ADMFLAG_KICK, false) : true);
-	bool useBan = (g_arrCVars[USEBAN].BoolValue) && (isRestricted ? CheckCommandAccess(client, "sm_ban", ADMFLAG_BAN, false) : true);
+	//bool useBan = (g_arrCVars[USEBAN].BoolValue) && (isRestricted ? CheckCommandAccess(client, "sm_ban", ADMFLAG_BAN, false) : true);
 	bool useSprayBan = (g_arrCVars[USESPRAYBAN].BoolValue) && (isRestricted ? CheckCommandAccess(client, "sm_sprayban", ADMFLAG_BAN, false) : true);
 
 	//Adding Punishments to Punishment Menu
@@ -2434,12 +2222,12 @@ public Action PunishmentMenu(int client, int sprayer) {
 		hMenu.AddItem("kick", szKick);
 	}
 
-	if (useBan) {
+/*	if (useBan) {
 		char szBan[128];
 		Format(szBan, sizeof szBan, "%T", "Ban", client);
 		hMenu.AddItem("ban", szBan);
 	}
-
+*/
 	if (useSprayBan) {
 		char szSPBan[128];
 		Format(szSPBan, sizeof szSPBan, "%T", "SPBan", client);
@@ -2459,376 +2247,127 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 		case MenuAction_Select: {
 			char szInfo[32];
 			char szSprayerName[MAX_NAME_LENGTH];
-			char szSprayerID[32];
 			char szAdminName[MAX_NAME_LENGTH];
-			int sprayer;
+			int sprayer, sprayerUserID;
 
-			szSprayerID = g_arrMenuSprayID[client];
-			sprayer = GetClientFromAuthID(g_arrMenuSprayID[client]);
+			sprayer = (FindTargetSteam(g_arrMenuSprayID[client]));
+			sprayerUserID= GetClientUserId(sprayer);
 			szSprayerName = g_arrSprayName[sprayer];
 			GetClientName(client, szAdminName, sizeof(szAdminName));
 			hMenu.GetItem(itemNum, szInfo, sizeof(szInfo));
 
-			//If you selected to ban someone, we arent going to run the rest of this, calls the ban times menu.
-			if (strcmp(szInfo, "ban") == 0) {
-				DisplayBanTimesMenu(client);
-			}
+			
 			//Guess you selected not to ban someone, so now we do this stuff.
-			else if (sprayer && IsClientInGame(sprayer)) {
-				AdminId sprayerAdmin = GetUserAdmin(sprayer);
-				AdminId clientAdmin = GetUserAdmin(client);
-
+			if (sprayer && IsClientInGame(sprayer)) {
 				//Uh Oh. You can't target this person. Now they're going to kill you.
-				if (((sprayerAdmin != INVALID_ADMIN_ID) && (clientAdmin != INVALID_ADMIN_ID)) && g_arrCVars[IMMUNITY].BoolValue && !clientAdmin.CanTarget(sprayerAdmin)) {
-					PrintToChat(client, "\x04[SSH] %T", "Admin Immune", client, szSprayerName);
-					LogAction(client, -1, "[SSH] %T", "Admin Immune Log", LANG_SERVER, szAdminName, szSprayerName);
-					PunishmentMenu(client, sprayer);
+				if (!CanUserTarget(client, sprayer)) {
+					CPrintToChat(client, "%s%T", PREFIX, "Admin Immune", client, szSprayerName);
 				}
 				//Wag that finger at them. You're doing good.
 				else if (strcmp(szInfo, "warn") == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "Warned", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "", "%s%T", PREFIX, "Warned", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Warned %L for a bad spray logo", client, sprayer);
 					PunishmentMenu(client, sprayer);
 				}
 				//SMACK! SLAP THAT HOE INTO THE NEXT DIMENSION.
 				else if (strcmp(szInfo, "slap") == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "Slapped And Warned", client, szSprayerName, szSprayerID, g_arrCVars[SLAPDMG].IntValue);
-					LogAction(client, -1, "[SSH] %T", "Log Slapped And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, g_arrCVars[SLAPDMG].IntValue);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "","%s%T", PREFIX, "Slapped And Warned", client, szAdminName, szSprayerName, g_arrCVars[SLAPDMG].IntValue);
+					LogAction(client, sprayer, "%L Slapped And Warned %L", client, sprayer);
 					SlapPlayer(sprayer, g_arrCVars[SLAPDMG].IntValue);
 					PunishmentMenu(client, sprayer);
 				}
 				//Now they're dead...>.>
 				else if (strcmp(szInfo, "slay") == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "Slayed And Warned", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log Slayed And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "","%s%T", PREFIX, "Slayed And Warned", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Slayed And Warned %L", client, sprayer);
 					ClientCommand(client, "sm_slay \"%s\"", szSprayerName);
 					PunishmentMenu(client, sprayer);
 				}
 				//You get to watch them scream in agony :D
 				else if (strcmp(szInfo, "burn") == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "Burnt And Warned", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log Burnt And Warned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(client, "sm_burn \"%s\" %d", szSprayerName, g_arrCVars[BURNTIME].IntValue);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "", "%s%T", PREFIX, "Burnt And Warned", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Burnt And Warned %L", client, sprayer);
+					FakeClientCommand(client, "sm_burn \"%s\" %d", szSprayerName, g_arrCVars[BURNTIME].IntValue);
 					PunishmentMenu(client, sprayer);
 				}
 				//All of a sudden. Their legs don't work anymore. odd.
 				else if (strcmp(szInfo, "freeze", false) == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "Froze", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log Froze", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(client, "sm_freeze \"%s\"", szSprayerName);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "", "%s%T", PREFIX, "Froze", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Froze %L", client, sprayer);
+					FakeClientCommand(client, "sm_freeze \"%s\"", szSprayerName);
 					PunishmentMenu(client, sprayer);
 				}
 				//BEEP. BEEP. BEEP. Now the whole server knows where they are.
 				else if (strcmp(szInfo, "beacon", false) == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "Beaconed", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log Beaconed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(client, "sm_beacon \"%s\"", szSprayerName);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "", "%s%T", PREFIX, "Beaconed", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Put a beacon on %L", client, sprayer);
+					FakeClientCommand(client, "sm_beacon \"%s\"", szSprayerName);
 					PunishmentMenu(client, sprayer);
 				}
 				//Their legs and anyone's legs around them are magically going to stop working in like....10 seconds...
 				else if (strcmp(szInfo, "freezebomb", false) == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "FreezeBombed", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log FreezeBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(client, "sm_freezebomb \"%s\"", szSprayerName);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "", "%s%T", PREFIX, "FreezeBombed", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Put a freezebomb on %L", client, sprayer);
+					FakeClientCommand(client, "sm_freezebomb \"%s\"", szSprayerName);
 					PunishmentMenu(client, sprayer);
 				}
 				//Now this is just cruel. You're going to hurt other people too....
 				else if (strcmp(szInfo, "firebomb", false) == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "FireBombed", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log FireBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(client, "sm_firebomb \"%s\"", szSprayerName);
+					CPrintToChat(sprayer, PREFIX ,"%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client, "","%s%T", PREFIX, "FireBombed", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Put a firebomb on %L", client, sprayer);
+					FakeClientCommand(client, "sm_firebomb \"%s\"", szSprayerName);
 					PunishmentMenu(client, sprayer);
 				}
 				//This is just horrible. You're straight murdering other people too...
 				else if (strcmp(szInfo, "timebomb", false) == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "TimeBombed", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log TimeBombed", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(client, "sm_timebomb \"%s\"", szSprayerName);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client,"", "%s%T", PREFIX, "TimeBombed", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Put a timebomb on %L", client, sprayer);
+					FakeClientCommand(client, "sm_timebomb \"%s\"", szSprayerName);
 					PunishmentMenu(client, sprayer);
 				}
 				//Slip something into their drink?
 				else if (strcmp(szInfo, "drug", false) == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					PrintToChat(client, "\x04[SSH] %T", "Drugged", client, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log Drugged", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
+					CShowActivity2(client,"", "%s%T", PREFIX, "Drugged", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L Drugged %L", client, sprayer);
 					CreateTimer(g_arrCVars[DRUGTIME].FloatValue, Undrug, sprayer, TIMER_FLAG_NO_MAPCHANGE);
-					ClientCommand(client, "sm_drug \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_drug \"%s\"", szSprayerName);
 					PunishmentMenu(client, sprayer);
 				}
 				//GTFO
 				else if (strcmp(szInfo, "kick") == 0) {
 					KickClient(sprayer, "%T", "Bad Spray Logo", sprayer);
-					PrintToChatAll("\x03[SSH] %T", "Kicked", LANG_SERVER, szSprayerName, szSprayerID);
-					LogAction(client, -1, "[SSH] %T", "Log Kicked", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
+					CShowActivity2(client, "", "%s%T", PREFIX, "Kicked", client, szAdminName, szSprayerName);
+					LogAction(client, sprayer, "%L kicked %L for a bad spray logo", client, sprayer);
 				}
 				//No more spraying for you :)
 				else if (strcmp(szInfo, "spban") == 0) {
-					PrintToChat(sprayer, "\x03[SSH] %T", "Please change", sprayer);
-					//PrintToChat(client, "\x04[SSH] %T", "SPBanned", client, szSprayerName, szSprayerID);
-					//LogAction(client, -1, "[SSH] %T", "Log SPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-					ClientCommand(client, "sm_sprayban \"%s\"", szSprayerName);
-					PunishmentMenu(client, sprayer);
+					AdminMenu_SpraybanDuration(client, sprayerUserID);
 				}
 			}
 			//Nice. That's not a person.
 			else {
-				PrintToChat(client, "\x04[SSH] %T", "Could Not Find Name ID", client, szSprayerName, szSprayerID);
-				LogAction(client, -1, "[SSH] %T", "Could Not Find Name ID", LANG_SERVER, szSprayerName, szSprayerID);
+				CPrintToChat(client,  "%s%T", PREFIX, "Could Not Find Name", client, szSprayerName);
 			}
 
 			//If you want to auto-remove their spray after punishing, this does it.
 			if (g_arrCVars[AUTOREMOVE].BoolValue) {
-				float vecEndPos[3];
-				SprayDecal(sprayer, 0, vecEndPos);
-
-				PrintToChat(client, "[SSH] %T", "Spray Removed", client, szSprayerName, szSprayerID, szAdminName);
-				LogAction(client, -1, "[SSH] %T", "Spray Removed", LANG_SERVER, szSprayerName, szSprayerID, szAdminName);
+				SprayNullDecal(sprayer);
+				CPrintToChat(client, "%s%T", PREFIX, "Spray Removed", client, szSprayerName, szAdminName);
 			}
 		}
 		case MenuAction_Cancel: {
 			if (itemNum == MenuCancel_ExitBack) {
 				RedisplayAdminMenu(g_hAdminMenu, client);
-			}
-		}
-		case MenuAction_End: {
-			delete hMenu;
-		}
-	}
-
-	return 0;
-}
-
-/******************************************************************************************
- *                                     BAN TIMES MENU                                     *
- ******************************************************************************************/
-
-//Called to display the list of ban times.
-public void DisplayBanTimesMenu(int client) {
-	char szSprayerName[MAX_NAME_LENGTH];
-	// `char szSprayerID[32];
-	char szAdminName[MAX_NAME_LENGTH];
-	int sprayer;
-
-	// szSprayerID = g_arrMenuSprayID[client];
-	sprayer = GetClientFromAuthID(g_arrMenuSprayID[client]);
-	szSprayerName = g_arrSprayName[sprayer];
-	GetClientName(client, szAdminName, sizeof(szAdminName));
-
-	if (!IsValidClient(client)) {
-		return;
-	}
-
-	Menu menu = new Menu(MenuHandler_BanTimes);
-
-	menu.SetTitle("Ban %s for...", szSprayerName);
-	menu.ExitBackButton = true;
-
-	if (g_arrCVars[USEPBAN].BoolValue) {
-		menu.AddItem("0", "Permanent");
-	}
-
-	menu.AddItem("180", "3 Hours");
-	menu.AddItem("360", "6 Hours");
-	menu.AddItem("720", "12 Hours");
-	menu.AddItem("1440", "1 Day");
-	menu.AddItem("4320", "3 Days");
-	menu.AddItem("10080", "1 Week");
-	menu.AddItem("5", "5 Minutes");
-	menu.AddItem("15", "15 Minutes");
-	menu.AddItem("30", "30 Minutes");
-	menu.AddItem("60", "1 Hour");
-	menu.AddItem("43800", "1 Month");
-
-	menu.Display(client, MENU_TIME_FOREVER);
-}
-
-//Handler for the ban times menu
-public int MenuHandler_BanTimes(Menu hMenu, MenuAction action, int client, int itemNum) {
-	char szInfo[32];
-	char szSprayerName[MAX_NAME_LENGTH];
-	char szSprayerID[32];
-	char szAdminName[MAX_NAME_LENGTH];
-	int sprayer;
-
-	szSprayerID = g_arrMenuSprayID[client];
-	sprayer = GetClientFromAuthID(g_arrMenuSprayID[client]);
-	szSprayerName = g_arrSprayName[sprayer];
-	GetClientName(client, szAdminName, sizeof(szAdminName));
-	hMenu.GetItem(itemNum, szInfo, sizeof(szInfo));
-
-	switch (action) {
-		case MenuAction_Select: {
-			if (sprayer) {
-				int iTime = StringToInt(szInfo);
-				char szBad[128];
-				Format(szBad, 127, "%T", "Bad Spray Logo", LANG_SERVER);
-
-				g_hExternalBan = FindConVar("sb_version");
-
-				//SourceBans integration
-				if (g_hExternalBan != null) {
-					ClientCommand(client, "sm_ban #%d %d \"%s\"", GetClientUserId(sprayer), iTime, szBad);
-
-					if (iTime == 0) {
-						LogAction(client, -1, "[SSH] %T", "EPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, "SourceBans");
-					}
-					else {
-						LogAction(client, -1, "[SSH] %T", "EBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime, "SourceBans");
-					}
-
-					delete g_hExternalBan;
-				}
-				else {
-					g_hExternalBan = FindConVar("mysql_bans_version");
-
-					//MySQL Bans integration
-					if (g_hExternalBan != null) {
-						ClientCommand(client, "mysql_ban #%d %d \"%s\"", GetClientUserId(sprayer), iTime, szBad);
-
-						if (iTime == 0) {
-							LogAction(client, -1, "[SSH] %T", "EPBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, "MySQL Bans");
-						}
-						else {
-							LogAction(client, -1, "[SSH] %T", "EBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime, "MySQL Bans");
-						}
-
-						delete g_hExternalBan;
-					}
-					else {
-						//Normal Ban
-						BanClient(sprayer, iTime, BANFLAG_AUTHID, szBad, szBad);
-
-						if (iTime == 0) {
-							LogAction(client, -1, "[SSH] %T", "PBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-						}
-						else {
-							LogAction(client, -1, "[SSH] %T", "Banned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime);
-						}
-					}
-				}
-
-				if (iTime == 0) {
-					PrintToChatAll("\x03[SSH] %T", "PBanned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID);
-				}
-				else {
-					PrintToChatAll("\x03[SSH] %T", "Banned", LANG_SERVER, szAdminName, szSprayerName, szSprayerID, iTime);
-				}
-			}
-			else {
-				PrintToChat(client, "\x04[SSH] %T", "Could Not Find Name ID", client, szSprayerName, szSprayerID);
-				LogAction(client, -1, "[SSH] %T", "Could Not Find Name ID", LANG_SERVER, szSprayerName, szSprayerID);
-			}
-		}
-		case MenuAction_Cancel: {
-			if (itemNum == MenuCancel_ExitBack) {
-				PunishmentMenu(client, sprayer);
-			}
-		}
-		case MenuAction_End: {
-			delete hMenu;
-		}
-	}
-
-	return 0;
-}
-
-/******************************************************************************************
- *                               CONFIRM YOUR ACTIONS MENU                                *
- ******************************************************************************************/
-
- //Called to display the Yes/No Menu for confirming your actions
-public void DisplayConfirmMenu(int client, int target, int type) {
-	if (!IsValidClient(client)) {
-		return;
-	}
-
-	switch (type) {
-		case 0: {
-			Menu menu = new Menu(MenuHandler_SprayBanConf);
-
-			menu.SetTitle("Заблокировать спреи %N?", target);
-			menu.ExitBackButton = true;
-
-			char info[8];
-			IntToString(target, info, sizeof info);
-
-			menu.AddItem(info, "Да");
-			menu.AddItem("-1", "Нет");
-
-			menu.Display(client, MENU_TIME_FOREVER);
-		}
-		case 1: {
-			Menu menu = new Menu(MenuHandler_UnSprayBanConf);
-
-			menu.SetTitle("Разблокировать спреи %N?", target);
-			menu.ExitBackButton = true;
-
-			char info[8];
-			IntToString(target, info, sizeof info);
-
-			menu.AddItem(info, "Да");
-			menu.AddItem("-1", "Нет");
-
-			menu.Display(client, MENU_TIME_FOREVER);
-		}
-	}
-}
-
-//Menu Handler for confirming spraybanning someone.
-public int MenuHandler_SprayBanConf(Menu hMenu, MenuAction action, int client, int itemNum) {
-	char info[8];
-	hMenu.GetItem(itemNum, info, sizeof info);
-	int choice = StringToInt(info);
-
-	switch (action) {
-		case MenuAction_Select: {
-			if (choice == -1) {
-				PunishmentMenu(client, choice);
-			}
-			else {
-				RunSprayBan(client, choice);
-			}
-		}
-		case MenuAction_Cancel: {
-			if (itemNum == MenuCancel_ExitBack) {
-				PunishmentMenu(client, choice);
-			}
-		}
-		case MenuAction_End: {
-			delete hMenu;
-		}
-	}
-
-	return 0;
-}
-
-//Menu Handler for confirming un-spraybanning someone.
-public int MenuHandler_UnSprayBanConf(Menu hMenu, MenuAction action, int client, int itemNum) {
-	char info[8];
-	hMenu.GetItem(itemNum, info, sizeof info);
-	int choice = StringToInt(info);
-
-	switch (action) {
-		case MenuAction_Select: {
-			if (choice == -1) {
-				PunishmentMenu(client, choice);
-			}
-			else {
-				RunUnSprayBan(client, choice);
-			}
-		}
-		case MenuAction_Cancel: {
-			if (itemNum == MenuCancel_ExitBack) {
-				PunishmentMenu(client, choice);
 			}
 		}
 		case MenuAction_End: {
@@ -2853,22 +2392,6 @@ public void ClearVariables(int client)
 	g_arrSprayID[client][0] = '\0';
 	g_arrMenuSprayID[client][0] = '\0';
 	g_arrSprayTime[client] = 0;
-	g_bSpraybanned[client] = false;
-}
-
-//Converts a clients auth id back into a client index
-public int GetClientFromAuthID(const char[] szAuthID) {
-	char szOtherAuthID[32];
-	for (int i = 1; i <= MaxClients; i++) {
-		if (IsClientInGame(i) && !IsFakeClient(i)) {
-			if (GetClientAuthId(i, AuthId_Steam2, szOtherAuthID, sizeof szOtherAuthID)) {
-				if (strcmp(szOtherAuthID, szAuthID) == 0) {
-					return i;
-				}
-			}
-		}
-	}
-	return 0;
 }
 
 public bool TraceEntityFilter_NoPlayers(int entity, int contentsMask) {
@@ -3023,4 +2546,666 @@ bool Client_PrintKeyHintText(int client, const char[] format, any ...) {
 	EndMessage();
 
 	return true;
+}
+
+
+public Action Command_SprayStatus(int client, int args){
+	
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
+	char clientKey[16];
+	IntToString(client, clientKey, sizeof(clientKey));
+	if (args == 0){
+		if (!SpraybansMap.ContainsKey(clientKey)){
+			ShowNoBlockMenu(client);
+			return Plugin_Handled;
+		}
+		SprayBan info;		
+		SpraybansMap.GetArray(clientKey,info,sizeof(info));
+		ShowBlockMenu(client, info);
+		return Plugin_Handled;
+	}
+	char authClient[MAX_AUTHID_LENGTH];
+	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
+	AdminId clientAdmID = FindAdminByIdentity("steam", authClient);
+	
+	
+
+	if (!GetAdminFlag(clientAdmID, Admin_Kick)){
+		ReplyToCommand(client, "[SM] You don't have the permission to use this command.");
+		return Plugin_Handled;
+	}
+	
+	char target[MAX_TARGET_LENGTH];
+	GetCmdArg(1, target, sizeof(target));
+
+	int targetClient = FindTarget(client, target, true, true);
+	if (targetClient == -1) 
+		return Plugin_Handled;
+	
+	IntToString(targetClient, clientKey, sizeof(clientKey));
+			
+	if (!SpraybansMap.ContainsKey(clientKey)){
+			ShowNoBlockMenu(client);
+			return Plugin_Handled;
+	}
+	SprayBan info;
+	SpraybansMap.GetArray(clientKey,info,sizeof(info));
+	ShowBlockMenu(client, info);
+	return Plugin_Handled;
+}
+
+
+void ShowNoBlockMenu(int client){
+	Panel panel = new Panel();
+	panel.SetTitle("Информация о блокировке спреев\n \n");
+	panel.DrawText("У вас нет активной блокировки \n \n");
+	panel.DrawItem("Закрыть");
+    
+	panel.Send(client,HandlerNoBlock ,MENU_TIME_FOREVER);
+
+	delete panel;
+}
+
+public int HandlerNoBlock(Menu menu, MenuAction action, int client, int itemNum){
+    return 0;
+}
+
+void ShowBlockMenu(int client, SprayBan blockInfo, const char[] nameOffline = ""){
+	Panel panel = new Panel();
+	panel.SetTitle("Информация о блокировке спреев\n \n");
+
+	char nameField[64];
+	char authField[MAX_AUTHID_LENGTH];
+	char admName[64];
+	char admField[64];
+	char duration[64];
+	char durationField[64];
+	char reasonField[64];
+	char createDate[64];
+	char createDateField[64];
+	char endDate[64];
+	char endDateField[64];
+	char s_timeLeft[64];
+	char timeLeftField[64];
+	
+	int timeLeft = blockInfo.endTime - GetTime();
+	
+	int iTarget = FindTargetSteam(blockInfo.auth);
+
+	if (nameOffline[0])
+		FormatEx(nameField,sizeof(nameField),"Имя: %s", nameOffline);
+	else 
+		(iTarget<=0) ? FormatEx(nameField,sizeof(nameField),"Имя: <unknown>") : FormatEx(nameField,sizeof(nameField),"Имя: %N", iTarget);
+	
+	panel.DrawText(nameField);
+
+	FormatEx(authField, sizeof(authField), "SteamID: %s", blockInfo.auth);
+	panel.DrawText(authField);
+	
+	AdminId admID = FindAdminByIdentity("steam", blockInfo.adminSteamID);
+	admID.GetUsername(admName, sizeof(admName));
+	FormatEx(admField, sizeof(admField), "Заблокировал: %s", admName);
+	panel.DrawText(admField);
+	
+	FormatDuration(blockInfo.length, duration, sizeof(duration));
+	FormatEx(durationField, sizeof(durationField), "Длительность: %s", duration);
+	panel.DrawText(durationField);
+
+	FormatEx(reasonField, sizeof(reasonField), "Причина: %s", blockInfo.reason);
+	panel.DrawText(reasonField);
+
+	FormatTime(createDate, sizeof(createDate), "%d.%m.%Y в %H:%M:%S", blockInfo.startTime);
+	FormatEx(createDateField, sizeof(createDateField), "Дата Блокировки: %s", createDate);
+	panel.DrawText(createDateField);
+
+	if (blockInfo.length>0){
+		FormatTime(endDate, sizeof(endDate), "%d.%m.%Y в %H:%M:%S", blockInfo.endTime);
+		FormatEx(endDateField, sizeof(endDateField), "Дата Окончания: %s", endDate);
+		panel.DrawText(endDateField);
+
+		FormatDuration(timeLeft, s_timeLeft, sizeof(s_timeLeft));
+		FormatEx(timeLeftField, sizeof(timeLeftField), "Осталось: %s \n \n", s_timeLeft);
+		panel.DrawText(timeLeftField);
+	}
+
+	panel.DrawItem("Закрыть");
+
+	panel.Send(client,HandlerBlockMenu ,MENU_TIME_FOREVER);
+
+	delete panel;
+}
+
+public int HandlerBlockMenu(Menu menu, MenuAction action, int client, int itemNum){
+    return 0;
+}
+
+public Action Command_SpraybanNew(int client, int args){
+	
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
+	char fullArg[128], err[128], reason[64], target[MAX_TARGET_LENGTH];
+	int time, iTarget;
+
+	GetCmdArgString(fullArg, sizeof(fullArg));
+	
+	if (!GetCmdArgsTTR(fullArg, target, sizeof target , time, reason,sizeof reason, err, sizeof err, BAN)){
+		ReplyToCommand(client, err);
+		return Plugin_Handled;
+	}
+
+	iTarget = FindTarget(client, target, true, true);
+		
+	if (iTarget == -1) 
+		return Plugin_Handled;
+	
+	char authTarget[MAX_AUTHID_LENGTH], authClient[MAX_AUTHID_LENGTH];
+	
+	GetClientAuthId(iTarget, AuthId_Steam2, authTarget, sizeof(authTarget));
+	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
+
+	char targetKey[16];
+	IntToString(iTarget, targetKey, sizeof(targetKey));
+
+	if (SpraybansMap.ContainsKey(targetKey)){
+		char targetName[MAX_NAME_LENGTH];
+		GetClientName(iTarget, targetName, sizeof(targetName));
+		CReplyToCommand(client,  "%s%T", PREFIX, "Already Spraybanned", client, targetName);
+		return Plugin_Handled;
+	}
+
+
+	SprayBan info;
+	info.startTime = GetTime();
+	info.length = time;
+	info.endTime = info.startTime + time;
+	strcopy(info.reason, sizeof(info.reason), reason);
+	strcopy(info.adminSteamID, sizeof(info.adminSteamID), authClient);
+	strcopy(info.auth, sizeof(info.auth), authTarget);
+	
+
+
+	char query[1024];
+	g_Database.Format(query, sizeof(query), "INSERT INTO ssh (auth, name, created, ends, duration, reason, adminID) \
+	VALUES ('%s', '%N', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", authTarget, iTarget, info.length, info.length, info.reason, info.adminSteamID);
+
+	SQL_LockDatabase(g_Database);
+	if(!SQL_FastQuery(g_Database, query)){
+		char error[256];
+		SQL_GetError(g_Database, error, sizeof(error));
+		LogError("SQL Error: %s", error);
+
+		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
+		SQL_UnlockDatabase(g_Database);
+		return Plugin_Handled;
+	}	
+	SQL_UnlockDatabase(g_Database);
+
+	SprayNullDecal(iTarget);
+	
+	SpraybansMap.SetArray(targetKey, info, sizeof(info), true);
+
+	char clientName[MAX_NAME_LENGTH], targetName[MAX_NAME_LENGTH];
+	GetClientName(iTarget, targetName, sizeof targetName);
+	GetClientName(client, clientName, sizeof clientName);
+	char duration[32];
+	FormatDuration(info.length, duration, sizeof duration);
+
+	CPrintToChat(iTarget, "%s%T",PREFIX, "You are SprayBanned Reply", iTarget);
+
+	LogAction(client, iTarget, "%L Spraybanned %L. Duration %d seconds. Reason %s", client, iTarget, info.length, reason);
+	CShowActivity2(client,"", "%s%T", PREFIX, "SPBanned",client, clientName,targetName, duration, reason);
+
+	ForwardSprayBan(targetName, authTarget, clientName, authClient, time, reason);
+	
+	return Plugin_Handled;
+}
+
+public Action Command_SprayUnbannew(int client, int args){
+
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
+	if (args < 1)
+	{
+		ReplyToCommand(client, "Usage: sm_sunban <target>");
+		return Plugin_Handled;
+	}
+	
+	char target[MAX_TARGET_LENGTH];
+
+	GetCmdArg(1, target, sizeof(target));
+
+	int iTarget = FindTarget(client, target, true, true);
+
+	if (iTarget == -1) 
+		return Plugin_Handled;
+
+	char authTarget[MAX_AUTHID_LENGTH], authClient[MAX_AUTHID_LENGTH];
+
+	GetClientAuthId(iTarget, AuthId_Steam2, authTarget, sizeof(authTarget));
+	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
+	AdminId admIDClient = FindAdminByIdentity("steam", authClient);
+
+	char targetKey[16];
+	IntToString(iTarget, targetKey, sizeof(targetKey));
+
+	if (!SpraybansMap.ContainsKey(targetKey)){
+		char targetName[MAX_NAME_LENGTH];
+		GetClientName(iTarget, targetName, sizeof(targetName));
+		CReplyToCommand(client,  "%s%T", PREFIX, "No Sprayban", client, targetName);
+		return Plugin_Handled;
+	}
+
+	SprayBan info;
+	SpraybansMap.GetArray(targetKey, info, sizeof(info));
+
+	AdminId admID = FindAdminByIdentity("steam", info.adminSteamID);
+
+	if(!CanAdminTarget(admIDClient, admID)){
+		char targetName[MAX_NAME_LENGTH];
+		GetClientName(iTarget, targetName, sizeof(targetName));
+		CReplyToCommand(client, "%s%T", PREFIX, "Cant Unban Admin Immun",client, targetName);
+		return Plugin_Handled;
+	}
+
+	char query[512];
+
+	g_Database.Format(query, sizeof(query), "\
+						UPDATE `ssh` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
+						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL", authClient, authTarget);
+
+	SQL_LockDatabase(g_Database);
+	if(!SQL_FastQuery(g_Database, query)){
+		char error[256];
+		SQL_GetError(g_Database, error, sizeof(error));
+		LogError("SQL Error: %s", error);
+
+		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
+		SQL_UnlockDatabase(g_Database);
+		return Plugin_Handled;
+	}	
+	
+	SQL_UnlockDatabase(g_Database);
+
+	SpraybansMap.Remove(targetKey);
+
+	char clientName[MAX_NAME_LENGTH];
+	GetClientName(client, clientName, sizeof(clientName));
+	char targetName[MAX_NAME_LENGTH];
+	GetClientName(iTarget, targetName, sizeof(targetName));
+	
+	CPrintToChat(iTarget, "%s%T", PREFIX, "You are UnSprayBanned Reply", iTarget);
+	LogAction(client, iTarget, "%L UnSpraybanned %L", client, iTarget);
+	CShowActivity2(client,"", "%s%T",PREFIX, "Spray Unban",client, clientName,targetName);
+
+	return Plugin_Handled;
+
+}
+
+public Action Command_SpraybanOfflinenew(int client, int args){
+
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
+	char fullArg[128], err[128], reason[64], authTarget[MAX_AUTHID_LENGTH];
+	int time;
+
+	GetCmdArgString(fullArg, sizeof(fullArg));
+	
+	if (!GetCmdArgsTTR(fullArg, authTarget, sizeof authTarget ,time, reason,sizeof reason, err, sizeof err, OFFBAN)){
+		ReplyToCommand(client, err);
+		return Plugin_Handled;
+	}
+
+	char query[1024];
+
+	g_Database.Format(query, sizeof(query), "\
+	SELECT `auth`, `created`, `ends`, `duration`, `adminID`, `reason` \
+	FROM `ssh` WHERE `auth` = '%s' AND `removedType` IS NULL \
+	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", authTarget);
+
+	DataPack pack = new DataPack();
+	pack.WriteCell(GetClientUserId(client));
+	pack.WriteString(authTarget);
+	pack.WriteCell(time);
+	pack.WriteString(reason);
+
+	g_Database.Query(OfflinebanCallback, query, pack);
+
+	return Plugin_Handled;
+}
+public void OfflinebanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
+	if (!db || !results || error[0]){
+		LogError("CheckBan query failed. (%s)", error);
+		return;
+	}
+	
+	char authTarget[MAX_AUTHID_LENGTH], authClient[MAX_AUTHID_LENGTH], reason[64];
+	int time, clientID;
+
+	pack.Reset();
+
+	clientID = pack.ReadCell();
+	pack.ReadString(authTarget, sizeof(authTarget));
+	time = pack.ReadCell();
+	pack.ReadString(reason, sizeof(reason));
+	delete pack;
+
+	char authResult[MAX_AUTHID_LENGTH];
+
+	int client = GetClientOfUserId(clientID);
+	
+	if (results.HasResults && results.RowCount && results.FetchRow()){
+		results.FetchString(0, authResult, sizeof(authResult));
+	}
+	if (authResult[0]){
+		CReplyToCommand(client, "%s%T", PREFIX, "Already Spraybanned", client, authResult);
+		return;
+	}
+
+	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
+	
+	AdminId admIDClient = FindAdminByIdentity("steam", authClient);
+	AdminId admIDTarget = FindAdminByIdentity("steam", authTarget);
+
+	if(!CanAdminTarget(admIDClient, admIDTarget)){
+		ReplyToCommand(client, "%s%T", PREFIX, "Cant ban Admin Immun", client, authTarget);
+		return;
+	}
+
+	char query[1024];
+	g_Database.Format(query, sizeof(query), "INSERT INTO ssh (auth, created, ends, duration, reason, adminID) \
+	VALUES ('%s', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", authTarget, time, time, reason, authClient);
+
+	SQL_LockDatabase(g_Database);
+	if(!SQL_FastQuery(g_Database, query)){
+		char sError[256];
+		SQL_GetError(g_Database, sError, sizeof(sError));
+		LogError("SQL Error: %s", sError);
+
+		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
+		SQL_UnlockDatabase(g_Database);
+		return;
+	}	
+	SQL_UnlockDatabase(g_Database);
+
+	int targetClient = FindTargetSteam(authTarget);
+
+	if (targetClient != 0){
+		SprayBan info;
+		info.startTime = GetTime();
+		info.length = time;
+		info.endTime = info.startTime + time;
+		strcopy(info.reason, sizeof(info.reason), reason);
+		strcopy(info.adminSteamID, sizeof(info.adminSteamID), authClient);
+		strcopy(info.auth, sizeof(info.auth), authTarget);
+		
+		char clientKey[16];
+		IntToString(targetClient, clientKey, sizeof(clientKey));
+
+		SprayNullDecal(targetClient);
+		
+		SpraybansMap.SetArray(clientKey, info, sizeof(info), true);
+
+		CPrintToChat(targetClient, "%s%T",PREFIX, "You are SprayBanned Reply", targetClient);
+		char clientName[MAX_NAME_LENGTH];
+		GetClientName(client, clientName, sizeof(clientName));
+		char targetName[MAX_NAME_LENGTH];
+		GetClientName(targetClient, targetName, sizeof(targetName));
+
+		LogAction(client, targetClient, "%L Spraybanned %L. Duration %d seconds. Reason %s", client, targetClient, info.length, reason);
+		CShowActivity2(client,"", "%s%T", PREFIX, "SPBanned",client, clientName,targetName, info.length, reason);
+
+		ForwardSprayBan(targetName, authTarget, clientName, authClient, time, reason);
+		return;
+	}
+	char clientName[MAX_NAME_LENGTH];
+	GetClientName(client, clientName, sizeof(clientName));
+
+	LogAction(client, -1, "%L Spraybanned %s. Duration %d seconds. Reason %s", client, authTarget, time, reason);
+	CShowActivity2(client,"", "%s%T", PREFIX, "SPBanned",client, clientName, authTarget, time, reason);
+
+	ForwardSprayBan(_, authTarget, clientName, authClient, time, reason);
+}
+
+public Action Command_SprayUnbanOfflinenew(int client, int args){
+
+	if (!g_arrCVars[ENABLED].BoolValue) {
+		ReplyToCommand(client, "[SM] This plugin is currently disabled.");
+		return Plugin_Handled;
+	}
+	
+	if (args < 1)
+	{
+		ReplyToCommand(client, "Usage: sm_offsunban2 <'steamID'>");
+		return Plugin_Handled;
+	}
+	
+	char authTarget[MAX_AUTHID_LENGTH];
+
+	GetCmdArg(1, authTarget, sizeof(authTarget));
+
+	char query[1024];
+
+	g_Database.Format(query, sizeof(query), "\
+	SELECT `auth`, `created`, `ends`, `duration`, `adminID`, `reason` \
+	FROM `ssh` WHERE `auth` = '%s' AND `removedType` IS NULL \
+	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", authTarget);
+
+	DataPack pack = new DataPack();
+	pack.WriteCell(GetClientUserId(client));
+	pack.WriteString(authTarget);
+
+	g_Database.Query(OfflineUnbanCallback, query, pack);
+
+	return Plugin_Handled;
+}
+public void OfflineUnbanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
+	if (!db || !results || error[0]){
+		LogError("CheckBan query failed. (%s)", error);
+		return;
+	}
+	
+	char authTarget[MAX_AUTHID_LENGTH], authClient[MAX_AUTHID_LENGTH];
+	int clientID;
+
+	pack.Reset();
+
+	clientID = pack.ReadCell();
+	pack.ReadString(authTarget, sizeof(authTarget));
+	delete pack;
+
+	char authResult[MAX_AUTHID_LENGTH];
+
+	int client = GetClientOfUserId(clientID);
+	
+	if (results.HasResults && results.RowCount && results.FetchRow()){
+		results.FetchString(0, authResult, sizeof(authResult));
+	}
+	if (!authResult[0]){
+		CReplyToCommand(client, "%s%T", PREFIX, "No Sprayban", client, authTarget);
+		return;
+	}
+
+	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
+	char authAdmin[MAX_AUTHID_LENGTH];
+	results.FetchString(4, authAdmin, sizeof(authAdmin));
+	
+	AdminId admIDClient = FindAdminByIdentity("steam", authClient);
+	AdminId admID = FindAdminByIdentity("steam", authAdmin);
+
+	if(!CanAdminTarget(admIDClient, admID)){
+		CReplyToCommand(client, "%s%T", PREFIX, "Cant Unban Admin Immun",client, authTarget);
+		return;
+	}
+
+	char query[1024];
+
+	g_Database.Format(query, sizeof(query), "\
+						UPDATE `ssh` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
+						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL", authClient, authTarget);
+
+	SQL_LockDatabase(g_Database);
+	if(!SQL_FastQuery(g_Database, query)){
+		char sError[256];
+		SQL_GetError(g_Database, sError, sizeof(sError));
+		LogError("SQL Error: %s", sError);
+
+		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
+		SQL_UnlockDatabase(g_Database);
+		return;
+	}	
+	
+	SQL_UnlockDatabase(g_Database);
+
+	int targetClient = FindTargetSteam(authTarget);
+
+	if (targetClient != 0){
+		
+		char targetKey[16];
+		IntToString(targetClient, targetKey, sizeof(targetKey));
+		
+		SpraybansMap.Remove(targetKey);
+
+		char clientName[MAX_NAME_LENGTH];
+		GetClientName(client, clientName, sizeof(clientName));
+		char targetName[MAX_NAME_LENGTH];
+		GetClientName(targetClient, targetName, sizeof(targetName));
+	
+		CPrintToChat(targetClient, "%s%T", PREFIX, "You are UnSprayBanned Reply", targetClient);
+		LogAction(client, targetClient, "%L UnSpraybanned %L", client, targetClient);
+		CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,targetName);
+		return;
+	}
+		char clientName[MAX_NAME_LENGTH];
+		GetClientName(client, clientName, sizeof(clientName));
+		LogAction(client, -1, "%L UnSpraybanned %s", client, authTarget);
+		CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,authTarget);
+}
+
+void FormatDuration(int seconds, char[] buffer, int bufferSize){
+	
+	if (seconds <= 0){
+		Format(buffer, bufferSize, "Навсегда");
+		return;
+	}
+    
+	int days = seconds / 86400;
+	int hours = (seconds % 86400) / 3600;
+	int minutes = (seconds % 3600) / 60;
+	int secs = seconds % 60;
+
+	char tempBuffer[128];
+	buffer[0] = '\0';
+
+	if (days > 0)
+	{
+	    Format(tempBuffer, sizeof(tempBuffer), "%dд", days);
+	    StrCat(buffer, bufferSize, tempBuffer);
+	}
+
+	if (hours > 0)
+	{
+	    if (strlen(buffer) > 0)
+	    {
+	        StrCat(buffer, bufferSize, " ");
+	    }
+	    Format(tempBuffer, sizeof(tempBuffer), "%dч", hours);
+	    StrCat(buffer, bufferSize, tempBuffer);
+	}
+
+	if (minutes > 0)
+	{
+	    if (strlen(buffer) > 0)
+	    {
+	        StrCat(buffer, bufferSize, " ");
+	    }
+	    Format(tempBuffer, sizeof(tempBuffer), "%dм", minutes);
+	    StrCat(buffer, bufferSize, tempBuffer);
+	}
+
+	if (secs > 0 || strlen(buffer) == 0)
+	{
+	    if (strlen(buffer) > 0)
+	    {
+	        StrCat(buffer, bufferSize, " ");
+	    }
+	    Format(tempBuffer, sizeof(tempBuffer), "%dс", secs);
+	    StrCat(buffer, bufferSize, tempBuffer);
+	}
+    
+	TrimString(buffer);
+}
+
+
+enum CommandType {
+	BAN,
+	OFFBAN,
+}
+
+//Gets the command arguments from input. Target, time and reason. returns false if args are invalid
+bool GetCmdArgsTTR(char[] input, char[] target, int targetS, int& time, char[] reason, int reasonS, char[] err, int errS, CommandType type){
+	char sTime[32];	
+	int iLen,
+		iTotelLen;
+	
+	if ((iLen = BreakString(input, target, targetS)) == -1){
+		switch (type) {
+			case BAN: {
+				strcopy(err, errS, "Usage: sm_sban <target> <duration in days> [reason]");
+			}
+			case OFFBAN: {
+				strcopy(err, errS, "Usage: sm_offsban <'steamid'> <duration in days> [reason]");
+			}
+		}
+		return false;
+	}
+	iTotelLen += iLen;
+	
+	if ((iLen = BreakString(input[iTotelLen], sTime, sizeof(sTime))) == -1){
+		strcopy(reason, reasonS, "Нет причины");
+		time = StringToInt(sTime) * 86400; 
+		if(time<0){
+			strcopy(err, errS, "Время наказания должно быть положительным или 0");
+			return false;
+		}	
+		return true;	
+	}
+	iTotelLen += iLen;
+	time = StringToInt(sTime) * 86400;
+		
+	if(time<0){
+	  	strcopy(err, errS, "Время наказания должно быть положительным или 0");
+	  	return false;
+	}
+	strcopy(reason, reasonS, input[iTotelLen]);
+
+	return true;
+}
+
+int FindTargetSteam(const char[] sSteamID){
+	char sSteamIDs[MAX_AUTHID_LENGTH];
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (IsClientInGame(i))
+		{
+			GetClientAuthId(i, AuthId_Steam2, sSteamIDs, sizeof(sSteamIDs));
+			if(StrEqual(sSteamID[8], sSteamIDs[8],false))
+			{
+				return i;
+			}	
+		}
+	}
+	return 0;
 }

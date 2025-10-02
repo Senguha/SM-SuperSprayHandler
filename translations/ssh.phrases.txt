@@ -6,18 +6,21 @@
 	{
 		"#format"		"{1:s},{2:s},{3:d}"
 		"en"			"{1} ({2}). Last Logo sprayed {3}s ago."
+		"ru"			"{1} ({2}). Последний спрей нанесён {3}с назад."
 	}
 
 	//Admin spray menu title
 	"Admin Spray Menu"
 	{
-		"en"			"Select a player"
+		"en"			"Apply user spray"
+		"ru"			"Нанести спрей игрока"
 	}
 
 	//Punishment option
 	"Warn"
 	{
 		"en"			"Warn Player"
+		"ru"			"Предупредить игрока"
 	}
 
 	//Punishment option
@@ -25,12 +28,14 @@
 	{
 		"#format"		"{1:d}"
 		"en"			"Slap and warn Player for {1} dmg"
+		"ru"			"Шлёпнуть и предупредить игрока на {1} урона"
 	}
 
 	//Punishment option
 	"Slay"
 	{
 		"en"			"Slay Player"
+		"ru"			"Убить игрока"
 	}
 
 	//Punishment option
@@ -39,139 +44,169 @@
 	{
 		"#format"		"{1:d}"
 		"en"			"Burn Player for {1} seconds"
+		"ru"			"Поджег игрока на {1} секунд"
 	}
 
 	//Punishment option
 	"Freeze"
 	{
 		"en"			"Freeze"
+		"ru"			"Заморозить"
 	}
 
 	//Punishment option
 	"Beacon"
 	{
 		"en"			"Beacon"
+		"ru"			"Маячок"
 	}
 
 	//Punishment option
 	"FreezeBomb"
 	{
 		"en"			"Freeze Bomb"
+		"ru"			"Замораживающая бомба"
 	}
 
 	//Punishment option
 	"FireBomb"
 	{
 		"en"			"Fire Bomb"
+		"ru"			"Огненная бомба"
 	}
 
 	//Punishment option
 	"TimeBomb"
 	{
 		"en"			"Time Bomb"
+		"ru"			"Бомба с таймером"
 	}
 
 	//Punishment option
 	"Drug"
 	{
 		"en"			"Drug"
+		"ru"			"Опьянить"
 	}
 
 	//Punishment option
 	"Kick"
 	{
 		"en"			"Kick Player"
-	}
-
-	//Punishment option
-	//Ban Player for {#Minutes} minute(s)
-	"Ban"
-	{
-		"en"			"Ban Player"
-	}
-
-	//Punishment option
-	"PBan"
-	{
-		"en"			"Ban Player permanently"
+		"ru"			"Кикнуть игрока"
 	}
 	
 	//Punishment option
 	"SPBan"
 	{
 		"en"			"Ban Player from Spraying"
+		"ru"			"Заблокировать игроку нанесение спрея"
+		
 	}
 
-		//Menu option
-	"Trace"
+	//Menu option
+	"Menu Trace"
 	{
 		"en"			"Trace spray"
+		"ru"			"Информация о спрее"
 	}
 
 	//Menu option
-	"Remove"
+	"Menu Remove"
 	{
 		"en"			"Remove spray"
+		"ru"			"Удалить спрей"
 	}
 	
 	//Menu option
-	"QuickRemove"
+	"Menu QuickRemove"
 	{
 		"en"			"Quick remove spray"
+		"ru"			"Быстро удалить спрей"
 	}
 
 	//Menu option
-	"RemoveAll"
+	"Menu RemoveAll"
 	{
 		"en"			"Remove all sprays"
+		"ru"			"Удалить все спреи"
 	}
 
 	//Menu option
-	"AdminSpray"
+	"Menu AdminSpray"
 	{
 		"en"			"Apply spray"
+		"ru"			"Нанести спрей игрока"
 	}
 	
 	//Menu option
-	"SprayBan"
+	"Menu SprayBan"
 	{
 		"en"			"Spray ban"
+		"ru"			"Заблокировать спреи"
 	}
 
 	//Menu option
-	"SprayUnban"
+	"Menu SprayUnban"
 	{
 		"en"			"Unban spray"
+		"ru"			"Разблокировать спреи"
 	}
 	
 	//Menu option
-	"SprayBanList"
+	"Menu SprayBanList"
 	{
 		"en"			"Spray Banlist"
+		"ru"			"Список заблокированных"
 	}
 
 	//Menu option
 	"SprayCommands"
 	{
 		"en"			"Spray commands"
+		"ru"			"Управление спреями"
 	}
 	
+	"Menu No Targets"
+	{
+		"en"			"No avalable targets"
+		"ru"			"Нет доступных целей"
+	}
+	"Menu Sprayban Duration"
+	{
+		"en"			"Sprayban duration \n \n"
+		"ru"			"Длительность блокировки \n \n"
+	}
+	"Menu Sprayban Reason"
+	{
+		"en"			"Sprayban reason \n \n"
+		"ru"			"Причина блокировки \n \n"
+	}
 	//Menu option
-	"AllPlayers"
+	"Menu AllPlayers"
 	{
 		"en" 			"All banned players" 
+		"ru" 			"Все заблокированные игроки"
+	}
+
+	"Menu Blocked Players"
+	{
+		"en" 			"Blocked players \n \n" 
+		"ru" 			"Заблокированные игроки \n \n"
 	}
 
 	//Menu option
-	"AllOnlinePlayers"
+	"Menu AllOnlinePlayers"
 	{
 		"en" 			"Banned players on the server"
+		"ru" 			"Игроки на сервере"
 	}
 
 	//Warning
-	"Please change"
+	"Please change spray"
 	{
 		"en"			"Please change your spray logo, it is inappropriate."
+		"ru"			"Пожалуйста, поменяйте ваш спрей, он нарушает правила!."
 	}
 
 
@@ -179,20 +214,21 @@
 	"Bad Spray Logo"
 	{
 		"en"			"Bad Spray Logo"
+		"ru"			"Спрей нарушающий правила"
 	}
 
 	//Command reply
 	"Could Not Find"
 	{
 		"en"			"Could not find target"
+		"ru"			"Не удалось найти цель"
 	}
 
-	//Punishment reply
-	//Could not find player {Name} ({SteamID})
-	"Could Not Find Name ID"
+	"Player is Spray Banned"
 	{
-		"#format"		"{1:s},{2:s}"
-		"en"			"Could not find player {1} ({2})"
+		"#format"		"{1:s}"
+		"en"			"Error applying {1} spray. Player is spraybanned"
+		"ru"			"Не удалось нанести спрей игрока {1}. У игрока заблокированы спреи"
 	}
 
 	//Punishment reply
@@ -201,14 +237,15 @@
 	{
 		"#format"		"{1:s}"
 		"en"			"Could not find player {1}"
+		"ru"			"Не удалось найти игрока {1}"
 	}
 
 	//Punishment annoucement
-	//Warned player {Name} ({SteamID})
 	"Warned"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Warned player {1} ({2})"
+		"en"			"{1} warned player {2} for a bad spray logo"
+		"ru"			"{1} предупредил игрока {2} за спрей нарушающий правила"
 	}
 
 	//Punishment annoucement
@@ -216,31 +253,32 @@
 	"Slapped And Warned"
 	{
 		"#format"		"{1:s},{2:s},{3:d}"
-		"en"			"Slapped and warned player {1} ({2}) for {3} dmg"
+		"en"			"{1} Slapped and warned player {2} for {3} dmg"
+		"ru"			"{1} Шлёпнул и предупредил игрока {2} на {3} урона"
 	}
 
 	//Punishment annoucement
-	//Slayed and warned player {Name} ({SteamID})
 	"Slayed And Warned"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Slayed and warned player {1} ({2})"
+		"en"			"{1} Slayed and warned player {2}"
+		"ru"			"{1} Убил и предупредил игрока {2}"
 	}
 
 	//Punishment annoucement
-	//Burnt and warned player {Name} ({SteamID})
 	"Burnt And Warned"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Burnt and warned player {1} ({2})"
+		"en"			"{1} Burnt and warned player {2}"
+		"ru"			"{1} Поджег и предупредил игрока {2}"
 	}
 
 	//Punishment annoucement
-	//Froze player {Name} ({SteamID})
 	"Froze"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Froze player {1} ({2})"
+		"en"			"{1} Froze player {2}"
+		"ru"			"{1} Заморозил игрока {2}"
 	}
 
 	//Punishment annoucement
@@ -248,7 +286,8 @@
 	"Beaconed"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Put a beacon on player {1} ({2})"
+		"en"			"{1} Put a beacon on player {2}"
+		"ru"			"{1} Установил маяк на игрока {2})"
 	}
 
 	//Punishment annoucement
@@ -257,6 +296,7 @@
 	{
 		"#format"		"{1:s},{2:s}"
 		"en"			"Put a freeze bomb on player {1} ({2})"
+		"ru"			"Установил замораживающую бомбу на игрока {1} ({2})"
 	}
 
 	//Punishment annoucement
@@ -265,6 +305,7 @@
 	{
 		"#format"		"{1:s},{2:s}"
 		"en"			"Put a fire bomb on player {1} ({2})"
+		"ru"			"Установил огненную бомбу на игрока {1} ({2})"
 	}
 
 	//Punishment annoucement
@@ -273,6 +314,7 @@
 	{
 		"#format"		"{1:s},{2:s}"
 		"en"			"Put a time bomb on player {1} ({2})"
+		"ru"			"Установил бомбу с таймером на игрока {1} ({2})"
 	}
 
 	//Punishment message
@@ -281,6 +323,7 @@
 	{
 		"#format"		"{1:s},{2:s}"
 		"en"			"Drugged player {1} ({2})"
+		"ru"			"Опьянил игрока {1} ({2})"
 	}
 
 	//Punishment annoucement
@@ -289,46 +332,34 @@
 	{
 		"#format"		"{1:s},{2:s}"
 		"en"			"Kicked player {1} ({2}) for a bad spray logo"
+		"ru"			"Кикнул игрока {1} ({2}) за спрей нарушаюший правила"
 	}
 
-	//Punishment annoucement
-	//"{AdminName} banned player {Name} ({SteamID}) for {#Minutes} minutes for a bad spray logo"
-	"Banned"
-	{
-		"#format"		"{1:s},{2:s},{3:s},{4:d}"
-		"en"			"{1} banned player {2} ({3}) for {4} minutes for a bad spray logo"
-	}
-
-	//Punishment annoucement
-	//"{AdminName} banned player {Name} ({SteamID}) for {#Minutes} minutes with {External Ban Name} for a bad spray logo"
-	"EBanned"
-	{
-		"#format"		"{1:s},{2:s},{3:s},{4:d},{5:s}"
-		"en"			"{1} banned player {2} ({3}) for {4} minutes with {5} for a bad spray logo"
-	}
-
-	//Punishment annoucement
-	//"{AdminName} permanently banned player {Name} ({SteamID}) for a bad spray logo"
-	"PBanned"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} permanently banned player {2} ({3}) for a bad spray logo"
-	}
-
-	//Punishment annoucement
-	//"{AdminName} permanently banned player {Name} ({SteamID}) for a bad spray logo with {External Ban Name}"
-	"EPBanned"
-	{
-		"#format"		"{1:s},{2:s},{3:s},{4:s}"
-		"en"			"{1} permanently banned player {2} ({3}) for a bad spray logo with {4}"
-	}
 	
 	//Punishment annoucement
 	//"{AdminName} Spray banned player {Name} ({SteamID}) for a bad spray logo"
 	"SPBanned"
 	{
-		"#format"	"{1:s},{2:s},{3:s}"
-		"en"	"{1} Spray banned player {2} ({3}) for a bad spray logo"
+		"#format"	"{1:s},{2:s},{3:s}, {4:s}"
+		"en"	"{orange}{1} {plum}spraybanned player {unique}{2} {plum}for {3}. Reason: {orange}{4}"
+		"ru"	"{orange}{1} {plum}заблокировал игроку {unique}{2} {plum}нанесение спреев на {3}. Причина: {orange}{4}"
+	}
+
+	"You are SprayBanned Reply"
+	{
+		"en"	"You are spraybanned and can't apply decals. Type {orange}!spraystatus {plum} for more info"
+		"ru"	"Вы были заблокированы и не можете наносить спреи. Пропишите {orange}!spraystatus {plum}чтобы узнать подробности"
+	}
+	"You are UnSprayBanned Reply"
+	{
+		"en"	"You were spray unbanned. You can use sprays again"
+		"ru"	"Вам была разблокирована возможность использовать спреи"
+	}
+
+	"Your Spray too close Reply"
+	{
+		"en"	"Your spray is too close to {orange}{1} {plum}spray"
+		"ru" 	"Ваш спрей нанесён слишком близко к спрею {orange}{1}"
 	}
 
 	//Command reply
@@ -337,6 +368,7 @@
 	{
 		"#format"		"{1:s},{2:s}"
 		"en"			"Sprayed by: {1} ({2})"
+		"ru"			"Спрей игрока: {1} ({2})"
 	}
 
 	//Command reply
@@ -345,160 +377,64 @@
 	{
 		"#format"		"{1:s}"
 		"en"			"Sprayed by: {1}"
+		"ru"			"Спрей игрока: {1}"
 	}
 
 	//Command reply
 	//{AdminName} sprayed {Target}'s spray
 	"Admin Sprayed"
 	{
-		"#format"		"{1:N},{2:N}"
+		"#format"		"{1:s},{2:s}"
 		"en"			"{1} sprayed {2}'s spray"
+		"ru"			"{1} нанёс спрей игрока {2}"
 	}
 
 	//Command Reply
 	"Cannot Spray"
 	{
 		"en"			"Error: Cannot spray the target's spray"
+		"ru"			"Ошибка: Невозможно нанести спрей цели"
 	}
 
 	//Command reply
 	//Spray by {Name} ({SteamID}), {#Seconds}s ago.
 	"Spray By"
 	{
-		"#format"		"{1:s},{2:s},{3:d}"
-		"en"			"Spray by {1} ({2}), {3} seconds ago"
+		"#format"		"{1:s},{2:d}"
+		"en"			"Spray by {1}, {2} seconds ago"
+		"ru"			"Спрей игрока {1}, {2} секунд назад"
 	}
 
 	//Command reply
 	"No Spray"
 	{
 		"en"			"No spray were found on where you are looking at"
+		"ru"			"Там, где вы смотрите, не было обнаружено спреев"
 	}
 	
 	//Command reply
 	"No Sprays"
 	{
 		"en"			"No Sprays have been sprayed."
+		"ru"			"Спреи не были нанесены."
 	}
 
 	//Command reply
 	//Spray from {Name} ({SteamID}) has been removed by {AdminName}
 	"Spray Removed"
 	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"Spray from {1} ({2}) has been removed by {3}"
+		"#format"		"{1:s},{2:s}"
+		"en"			"{1}'s spray has been removed by {2}"
+		"ru"			"Спрей игрока {1} был удален администратором {2}"
 	}
 	
 	//Command reply
 	//All Sprays have been removed by {AdminName}.
-	"Sprays Removed"
+	"AllSpraysRemoved"
 	{
 		"#format"		"{1:s}"
-		"en"			"All Sprays have been removed by {1}"
-	}
-
-	//Punishment logging
-	//{AdminName} warned player {Name} ({SteamID})
-	"Log Warned"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} warned player {2} ({3})"
-	}
-
-	//Punishment logging
-	//{AdminName} slapped and warned player {Name} ({SteamID})
-	"Log Slapped And Warned"
-	{
-		"#format"		"{1:s},{2:s},{3:s},{4:d}"
-		"en"			"{1} slapped and warned player {2} ({3}) for {4} dmg"
-	}
-
-	//Punishment logging
-	//{AdminName} slayed and warned player {Name} ({SteamID})
-	"Log Slayed And Warned"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} slayed and warned player {2} ({3})"
-	}
-
-	//Punishment logging
-	//{AdminName} burnt and warned player {Name} ({SteamID})
-	"Log Burnt And Warned"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} burnt and warned player {2} ({3})"
-	}
-
-	//Punishment annoucement
-	//{AdminName} froze player {Name} ({SteamID}) for a bad spray logo
-	"Log Froze"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} froze player {2} ({3}) for a bad spray logo"
-	}
-
-	//Punishment annoucement
-	//{AdminName} put a beacon on player {Name} ({SteamID}) for a bad spray logo
-	"Log Beaconed"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} put a beacon on player {2} ({3}) for a bad spray logo"
-	}
-
-	//Punishment annoucement
-	//{AdminName} put a freeze bomb on player {Name} ({SteamID}) for a bad spray logo
-	"Log FreezeBombed"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} put a freeze bomb on player {2} ({3}) for a bad spray logo"
-	}
-
-	//Punishment annoucement
-	//{AdminName} put a fire bomb on player {Name} ({SteamID}) for a bad spray logo
-	"Log FireBombed"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} put a fire bomb on player {2} ({3}) for a bad spray logo"
-	}
-
-	//Punishment annoucement
-	//{AdminName} put a time bomb on player {Name} ({SteamID}) for a bad spray logo
-	"Log TimeBombed"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} put a time bomb on player {2} ({3}) for a bad spray logo"
-	}
-
-	//Punishment message
-	//{AdminName} drugged player {Name} ({SteamID}) for a bad spray logo
-	"Log Drugged"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} drugged player {2} ({3}) for a bad spray logo"
-	}
-
-	//Punishment logging
-	//{AdminName} kicked player {Name} ({SteamID}) for a bad spray logo
-	"Log Kicked"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} kicked player {2} ({3}) for a bad spray logo"
-	}
-	
-	//Punishment logging
-	//{AdminName} Spray Banned {Name} ({SteamID}) for a bad spray logo
-	"Log SPBanned"
-	{
-		"#format"		"{1:s},{2:s},{3:s}"
-		"en"			"{1} Spray banned player {2} ({3}) for a bad spray logo."
-	}
-
-	//Command fail reply
-	//{AdminName} tried to punish {OtherAdminName} but failed. {OtherAdminName} has higher immunity.
-	"Admin Immune Log"
-	{
-		"#format"		"{1:s},{2:s}"
-		"en"			"{1} tried to punish {2} but failed. {2} has higher immunity."
+		"en"			"All Sprays have been removed by {orange}{1}"
+		"ru"			"Все спреи были удалены администратором {orange}{1}"
 	}
 
 	//Command fail reply
@@ -507,5 +443,57 @@
 	{
 		"#format"		"{1:s}"
 		"en"			"You tried to punish {1} but failed. {1} has higher immunity."
+		"ru"			"Вы пытались совершить действие над {1}, но {1} имеет более высокий иммунитет."
+	}
+	"HUD Spray"
+	{
+		"#format"		"{1:s}"
+		"en"			"Sprayed by: \n{1}"
+		"ru"			"Спрей игрока: \n{1}"
+	}
+	"HUD Sprays too close"
+	{
+		"en" 			"Sprays are too close together to determine owner!"
+		"ru" 			"Спреи слишком близки для определения владельца!"
+	}
+	"Already Spraybanned"
+	{
+		"#format"		"{1:s}"
+		"en"			"Unable to spray ban {1}, reason - already spray banned"
+		"ru"			"У игрока {1} уже есть блокировка спреев"
+	}
+	"No Sprayban"
+	{
+		"#format"		"{1:s}"
+		"en"			"Unable to spray unban {1}, reason - not spraybanned"
+		"ru"			"У игрока {1} нет блокировки спреев"
+	}
+	"DB Error"
+	{
+		"en"			"Error: Unable to connect to database"
+		"ru"			"Ошибка: Невозможно подключиться к базе данных"
+	}
+	"Cant Unban Admin Immun"
+	{
+		"#format"		"{1:s}"
+		"en" 	"Unable to unsprayban {1}. Ban was issued by admin with higher immunity that yours"
+		"ru" 	"Невозможно разблокировать спреи {1}. Блокировка была выдана администратором с более высоким иммунитетом"
+	}
+	"Cant Ban Admin Immun"
+	{
+		"#format"		"{1:s}"
+		"en" 	"Unable to sprayban {1}. Target has higher immunity than yours"
+		"ru" 	"Невозможно заблокировать спреи {1}. Иммунинтет цели выше вашего"
+	}
+	"Spray Unban"
+	{
+		"#format"		"{1:s}{2:s}"
+		"en"			"{1} Unbanned spraying for {2}"
+		"ru"			"{1} Разблокировал игроку {2} нанесение спреев"
+	}
+	"Ban expired"
+	{
+		"en"			"Your sprayban has expired!"
+		"ru"			"Ваша блокировка спрея истекла!"
 	}
 }
