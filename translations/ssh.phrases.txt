@@ -496,4 +496,15 @@
 		"en"			"Your sprayban has expired!"
 		"ru"			"Ваша блокировка спрея истекла!"
 	}
+	"Notify Decalban"
+	{
+		"ru"			"Вы были заблокированы и не можете использовать изображения на предметах. Пропишите {orange}!spraystatus {plum}чтобы узнать подробности"
+		"en"			"You are decal banned and can't use items decals. Type {orange}!spraystatus {plum} for more info"
+	}
+	"Admin Cleared Decals"
+	{
+		"#format"		"{1:s}{2:s}"
+		"en"			"{1} cleared all decal items for {2}"
+		"ru"			"{1} удалил все изображения на предметах игроку {2}"
+	}
 }

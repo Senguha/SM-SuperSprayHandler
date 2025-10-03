@@ -6,10 +6,12 @@
 #include <clientprefs>
 #include <morecolors>
 #include <ssh>
+#include <tf2items>
+#include <tf2attributes>
 
 #define MAX_STEAMAUTH_LENGTH 21 
 #define MAX_COMMUNITYID_LENGTH 18 
-#define PREFIX "{violet}[SSH]{plum} "
+#define PREFIX "{violet}[Decal Manager]{plum} "
 
 
 #include <tf2_stocks>
@@ -77,6 +79,7 @@ enum struct SprayBan {
 	char adminSteamID[MAX_AUTHID_LENGTH];
 	char reason[64];
 	char auth[MAX_AUTHID_LENGTH];
+	bool notyfied;
 }
 
 //Our Timer that will be initialized later
@@ -113,8 +116,8 @@ bool highMaxPlayers = false;
 
 //The plugin info :D
 public Plugin myinfo = {
-	name = "Super Spray Handler",
-	description = "Ultimate Tool for Admins to manage Sprays on their servers.",
+	name = "Decal Manager",
+	description = "Ultimate Tool for Admins to manage Sprays and Decals on their servers.",
 	author = "shavit, Nican132, CptMoore, Lebson506th, TheWreckingCrew6, JoinedSenses, sappho.io, Mtseng",
 	version = PLUGIN_VERSION,
 	url = "",
@@ -176,6 +179,7 @@ public void OnPluginStart() {
 	RegAdminCmd("sm_adminspray", Command_AdminSpray, ADMFLAG_KICK, "Sprays the named player's logo in front of you.");
 	RegAdminCmd("sm_qremovespray", Command_QuickRemoveSpray, ADMFLAG_KICK, "Removes the logo in front of you without opening punishment menu.");
 	RegAdminCmd("sm_removeallsprays", Command_RemoveAllSprays, ADMFLAG_UNBAN, "Removes all sprays from the map.");
+	RegAdminCmd("sm_cleardecals", Command_ClearDecals, ADMFLAG_UNBAN, "Usage : sm_cleardecals <target> - Removes all decals from target items.");
 
 	RegAdminCmd("sm_sbans", Command_Spraybans, ADMFLAG_GENERIC, "Shows a list of all connected spray banned players.");
 	RegAdminCmd("sm_spraybans", Command_Spraybans, ADMFLAG_GENERIC, "Shows a list of all connected spray banned players.");
@@ -2762,6 +2766,8 @@ public Action Command_SpraybanNew(int client, int args){
 	LogAction(client, iTarget, "%L Spraybanned %L. Duration %d seconds. Reason %s", client, iTarget, info.length, reason);
 	CShowActivity2(client,"", "%s%T", PREFIX, "SPBanned",client, clientName,targetName, duration, reason);
 
+	ClearBannedItems(iTarget);
+	
 	ForwardSprayBan(targetName, authTarget, clientName, authClient, time, reason);
 	
 	return Plugin_Handled;
@@ -2967,6 +2973,8 @@ public void OfflinebanCallback(Database db, DBResultSet results, const char[] er
 		LogAction(client, targetClient, "%L Spraybanned %L. Duration %d seconds. Reason %s", client, targetClient, info.length, reason);
 		CShowActivity2(client,"", "%s%T", PREFIX, "SPBanned",client, clientName,targetName, info.length, reason);
 
+		ClearBannedItems(targetClient);
+
 		ForwardSprayBan(targetName, authTarget, clientName, authClient, time, reason);
 		return;
 	}
@@ -3088,10 +3096,10 @@ public void OfflineUnbanCallback(Database db, DBResultSet results, const char[] 
 		CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,targetName);
 		return;
 	}
-		char clientName[MAX_NAME_LENGTH];
-		GetClientName(client, clientName, sizeof(clientName));
-		LogAction(client, -1, "%L UnSpraybanned %s", client, authTarget);
-		CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,authTarget);
+	char clientName[MAX_NAME_LENGTH];
+	GetClientName(client, clientName, sizeof(clientName));
+	LogAction(client, -1, "%L UnSpraybanned %s", client, authTarget);
+	CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,authTarget);
 }
 
 void FormatDuration(int seconds, char[] buffer, int bufferSize){
@@ -3208,4 +3216,138 @@ int FindTargetSteam(const char[] sSteamID){
 		}
 	}
 	return 0;
+}
+
+//Removes the decals from the items: objector, flairs etc..
+public Action TF2Items_OnGiveNamedItem(int iClient, char[] sClassName, int iItemDefinitionIndex, Handle &hItem) {
+	
+	char clientKey[8];
+	IntToString(iClient, clientKey, 8);
+	if (!SpraybansMap.ContainsKey(clientKey))
+		return Plugin_Continue;
+
+	if(iItemDefinitionIndex == 474 || iItemDefinitionIndex == 619 || iItemDefinitionIndex == 623 || iItemDefinitionIndex == 624) {
+		static Handle hItemHandleCopy = INVALID_HANDLE;
+
+		if (hItemHandleCopy != INVALID_HANDLE) {
+			CloseHandle(hItemHandleCopy);
+			hItemHandleCopy = INVALID_HANDLE;
+		}
+
+		hItem = TF2Items_CreateItem(OVERRIDE_ALL);		
+		TF2Items_SetClassname(hItem, sClassName);
+		TF2Items_SetItemIndex(hItem, iItemDefinitionIndex);
+		TF2Items_SetNumAttributes(hItem, 2);
+		TF2Items_SetAttribute(hItem, 0, 227, view_as<float>(548814534));
+		TF2Items_SetAttribute(hItem, 0, 152, view_as<float>(1656248994));
+		
+		
+		TF2Items_SetFlags(hItem, OVERRIDE_ATTRIBUTES);
+		hItemHandleCopy = hItem;
+
+		SprayBan info;
+		SpraybansMap.GetArray(clientKey, info, sizeof(info));
+		if(!info.notyfied) {
+			info.notyfied = true;
+			SpraybansMap.SetArray(clientKey, info, sizeof(info), true);
+			RequestFrame(Notify_ItemChange, EntIndexToEntRef(iClient));
+		}
+		return Plugin_Changed;
+
+	}
+	return Plugin_Continue;
+}
+
+public Action Command_ClearDecals(int client, int args) {
+	
+	if (args < 1)
+	{
+		ReplyToCommand(client, "Usage: sm_cleardecals <target>");
+		return Plugin_Handled;
+	}
+	char target[MAX_TARGET_LENGTH];
+	GetCmdArg(1, target, sizeof(target));
+	
+	int targetClient = FindTarget(client, target, true, true);
+	if (!IsValidClient(targetClient) || !IsPlayerAlive(targetClient))
+		return Plugin_Handled;
+	
+	ClearBannedItems(targetClient);
+	char clientName[MAX_NAME_LENGTH], targetName[MAX_NAME_LENGTH];
+	GetClientName(targetClient, targetName, sizeof(targetName));
+	GetClientName(client, clientName, sizeof(clientName));
+
+	CShowActivity2(client, "", "%s%T", PREFIX, "Admin Cleared Decals", LANG_SERVER, clientName, targetName);
+	return Plugin_Handled;
+}
+
+void ClearBannedItems(int target){
+	if (!IsPlayerAlive(target)){
+		ClearBannedItems_CreateTimer(target);
+		return;
+	}		
+	int edict = -1;
+	while((edict = FindEntityByClassname(edict, "tf_wearable")) != -1)
+	{
+		char netclass[32];
+		if (GetEntityNetClass(edict, netclass, sizeof(netclass)) && StrEqual(netclass, "CTFWearable"))
+		{
+			if (GetEntPropEnt(edict, Prop_Send, "m_hOwnerEntity") == target)
+			{
+				int index = GetEntProp(edict, Prop_Send, "m_iItemDefinitionIndex");
+				if (index == 619 || index == 623 || index == 624)
+				{
+					TF2Attrib_SetByDefIndex(edict, 227, view_as<float>(0));
+					TF2Attrib_SetByDefIndex(edict, 152, view_as<float>(0));
+				}
+			}
+		}
+	}
+	int wepEnt = GetPlayerWeaponSlot(target, 2);
+	int wepIndex = GetEntProp(wepEnt, Prop_Send, "m_iItemDefinitionIndex");
+	if (wepIndex != 474)
+		return;
+	TF2Attrib_SetByDefIndex(wepEnt, 227, view_as<float>(0));
+	TF2Attrib_SetByDefIndex(wepEnt, 152, view_as<float>(0));	
+}
+
+void ClearBannedItems_CreateTimer(int target) {
+	CreateTimer(5.0, ClearBannedItems_TimerCallback, target, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action ClearBannedItems_TimerCallback(Handle timer, int target){
+	if (!IsPlayerAlive(target))
+		return Plugin_Continue;
+	
+	int edict = -1;
+	while((edict = FindEntityByClassname(edict, "tf_wearable")) != -1)
+	{
+		char netclass[32];
+		if (GetEntityNetClass(edict, netclass, sizeof(netclass)) && StrEqual(netclass, "CTFWearable"))
+		{
+			if (GetEntPropEnt(edict, Prop_Send, "m_hOwnerEntity") == target)
+			{
+				int index = GetEntProp(edict, Prop_Send, "m_iItemDefinitionIndex");
+				if (index == 619 || index == 623 || index == 624)
+				{
+					TF2Attrib_SetByDefIndex(edict, 227, view_as<float>(0));
+					TF2Attrib_SetByDefIndex(edict, 152, view_as<float>(0));
+				}
+			}
+		}
+	}
+	int wepEnt = GetPlayerWeaponSlot(target, 2);
+	int wepIndex = GetEntProp(wepEnt, Prop_Send, "m_iItemDefinitionIndex");
+	if (wepIndex == 474){
+		TF2Attrib_SetByDefIndex(wepEnt, 227, view_as<float>(0));
+		TF2Attrib_SetByDefIndex(wepEnt, 152, view_as<float>(0));
+	}
+	return Plugin_Stop;
+}
+public void Notify_ItemChange(any ref) {
+	int iClient = EntRefToEntIndex(ref);
+	if(iClient == INVALID_ENT_REFERENCE)
+		return;
+		
+	CPrintToChat(iClient, "%s%T", PREFIX, "Notify Decalban", iClient);
 }
