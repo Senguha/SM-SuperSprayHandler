@@ -738,17 +738,14 @@ void CheckBan(int client)
 		return;
 	}
 	
-	char escapedAuth[64];
-	g_Database.Escape(auth, escapedAuth, sizeof(escapedAuth));
-	
 	char query[1024];
 
 	g_Database.Format(query, sizeof(query), "\
 	SELECT `auth`, `created`, `ends`, `duration`, `adminID`, `reason` \
 	FROM `ssh` WHERE `auth` = '%s' AND `removedType` IS NULL \
-	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", escapedAuth);
+	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", auth);
 
-	g_Database.Query(sqlQuery_CheckBan, query, GetClientUserId(client));
+	SQL_TQuery(g_Database, sqlQuery_CheckBan, query, GetClientUserId(client));
 }
 
 public Action timerCheckBan(Handle timer, int userid) {
@@ -1194,7 +1191,7 @@ int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2
 					FROM `ssh` WHERE `removedType` IS NULL \
 					AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP())");
 					
-					g_Database.Query(AllSprayBansCallback, query, GetClientUserId(param1));
+					SQL_TQuery(g_Database, AllSprayBansCallback, query, GetClientUserId(param1));
 				}
 			}
 		}     			
@@ -2292,7 +2289,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
 					CShowActivity2(client, "","%s%T", PREFIX, "Slayed And Warned", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Slayed And Warned %L", client, sprayer);
-					ClientCommand(client, "sm_slay \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_slay #%d", sprayerUserID);
 					PunishmentMenu(client, sprayer);
 				}
 				//You get to watch them scream in agony :D
@@ -2300,7 +2297,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
 					CShowActivity2(client, "", "%s%T", PREFIX, "Burnt And Warned", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Burnt And Warned %L", client, sprayer);
-					FakeClientCommand(client, "sm_burn \"%s\" %d", szSprayerName, g_arrCVars[BURNTIME].IntValue);
+					FakeClientCommand(client, "sm_burn #%d %d", sprayerUserID, g_arrCVars[BURNTIME].IntValue);
 					PunishmentMenu(client, sprayer);
 				}
 				//All of a sudden. Their legs don't work anymore. odd.
@@ -2308,7 +2305,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
 					CShowActivity2(client, "", "%s%T", PREFIX, "Froze", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Froze %L", client, sprayer);
-					FakeClientCommand(client, "sm_freeze \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_freeze #%d", sprayerUserID);
 					PunishmentMenu(client, sprayer);
 				}
 				//BEEP. BEEP. BEEP. Now the whole server knows where they are.
@@ -2316,7 +2313,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
 					CShowActivity2(client, "", "%s%T", PREFIX, "Beaconed", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Put a beacon on %L", client, sprayer);
-					FakeClientCommand(client, "sm_beacon \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_beacon #%d", sprayerUserID);
 					PunishmentMenu(client, sprayer);
 				}
 				//Their legs and anyone's legs around them are magically going to stop working in like....10 seconds...
@@ -2324,7 +2321,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
 					CShowActivity2(client, "", "%s%T", PREFIX, "FreezeBombed", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Put a freezebomb on %L", client, sprayer);
-					FakeClientCommand(client, "sm_freezebomb \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_freezebomb #%d", sprayerUserID);
 					PunishmentMenu(client, sprayer);
 				}
 				//Now this is just cruel. You're going to hurt other people too....
@@ -2332,7 +2329,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CPrintToChat(sprayer, PREFIX ,"%s%T", PREFIX, "Please change spray", sprayer);
 					CShowActivity2(client, "","%s%T", PREFIX, "FireBombed", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Put a firebomb on %L", client, sprayer);
-					FakeClientCommand(client, "sm_firebomb \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_firebomb #%d", sprayerUserID);
 					PunishmentMenu(client, sprayer);
 				}
 				//This is just horrible. You're straight murdering other people too...
@@ -2340,7 +2337,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CPrintToChat(sprayer, "%s%T", PREFIX, "Please change spray", sprayer);
 					CShowActivity2(client,"", "%s%T", PREFIX, "TimeBombed", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Put a timebomb on %L", client, sprayer);
-					FakeClientCommand(client, "sm_timebomb \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_timebomb #%d", sprayerUserID);
 					PunishmentMenu(client, sprayer);
 				}
 				//Slip something into their drink?
@@ -2349,7 +2346,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 					CShowActivity2(client,"", "%s%T", PREFIX, "Drugged", client, szAdminName, szSprayerName);
 					LogAction(client, sprayer, "%L Drugged %L", client, sprayer);
 					CreateTimer(g_arrCVars[DRUGTIME].FloatValue, Undrug, sprayer, TIMER_FLAG_NO_MAPCHANGE);
-					FakeClientCommand(client, "sm_drug \"%s\"", szSprayerName);
+					FakeClientCommand(client, "sm_drug #%d", sprayerUserID);
 					PunishmentMenu(client, sprayer);
 				}
 				//GTFO
@@ -2725,12 +2722,55 @@ public Action Command_SpraybanNew(int client, int args){
 	char targetKey[16];
 	IntToString(iTarget, targetKey, sizeof(targetKey));
 
+	char targetName[MAX_NAME_LENGTH];
+	GetClientName(iTarget, targetName, sizeof(targetName));
+
 	if (SpraybansMap.ContainsKey(targetKey)){
-		char targetName[MAX_NAME_LENGTH];
-		GetClientName(iTarget, targetName, sizeof(targetName));
 		CReplyToCommand(client,  "%s%T", PREFIX, "Already Spraybanned", client, targetName);
 		return Plugin_Handled;
 	}
+	
+	char query[1024];
+	g_Database.Format(query, sizeof(query), "INSERT INTO ssh (auth, name, created, ends, duration, reason, adminID) \
+	VALUES ('%s', '%N', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", authTarget, iTarget, time, time, reason, authClient);
+
+	DataPack pack = new DataPack();
+	pack.WriteCell(GetClientUserId(client));
+	pack.WriteCell(GetClientUserId(iTarget));
+	pack.WriteCell(time);
+	pack.WriteString(reason);
+	pack.WriteString(authClient);
+	pack.WriteString(authTarget);
+
+	SQL_TQuery(g_Database,SQL_BanCallback ,query, pack);
+	return Plugin_Handled;
+}
+
+public void SQL_BanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
+
+	pack.Reset();
+	int clientID = pack.ReadCell();
+	int targetID = pack.ReadCell();
+	int time = pack.ReadCell();
+	char reason[64];
+	char authClient[MAX_AUTHID_LENGTH];
+	char authTarget[MAX_AUTHID_LENGTH];
+	pack.ReadString(reason, sizeof(reason));
+	pack.ReadString(authClient, sizeof(authClient));
+	pack.ReadString(authTarget, sizeof(authTarget));
+	delete pack;
+
+	int client = GetClientOfUserId(clientID);
+	int target = GetClientOfUserId(targetID);
+
+	if (!IsValidClient(target)) 
+		return;
+		
+	if (!db || !results || error[0]) {
+		LogError("SQL error in SQL_BanCallback: %s", error);
+		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
+		return;
+	}	
 
 
 	SprayBan info;
@@ -2741,45 +2781,30 @@ public Action Command_SpraybanNew(int client, int args){
 	strcopy(info.adminSteamID, sizeof(info.adminSteamID), authClient);
 	strcopy(info.auth, sizeof(info.auth), authTarget);
 	
+	
+	SprayNullDecal(target);
 
-
-	char query[1024];
-	g_Database.Format(query, sizeof(query), "INSERT INTO ssh (auth, name, created, ends, duration, reason, adminID) \
-	VALUES ('%s', '%N', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", authTarget, iTarget, info.length, info.length, info.reason, info.adminSteamID);
-
-	SQL_LockDatabase(g_Database);
-	if(!SQL_FastQuery(g_Database, query)){
-		char error[256];
-		SQL_GetError(g_Database, error, sizeof(error));
-		LogError("SQL Error: %s", error);
-
-		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
-		SQL_UnlockDatabase(g_Database);
-		return Plugin_Handled;
-	}	
-	SQL_UnlockDatabase(g_Database);
-
-	SprayNullDecal(iTarget);
+	char targetKey[8];
+	IntToString(target, targetKey, 8);
 	
 	SpraybansMap.SetArray(targetKey, info, sizeof(info), true);
 
 	char clientName[MAX_NAME_LENGTH], targetName[MAX_NAME_LENGTH];
-	GetClientName(iTarget, targetName, sizeof targetName);
+	GetClientName(target, targetName, sizeof targetName);
 	GetClientName(client, clientName, sizeof clientName);
 	char duration[32];
 	FormatDuration(client, info.length, duration, sizeof duration);
 
-	CPrintToChat(iTarget, "%s%T",PREFIX, "You are SprayBanned Reply", iTarget);
+	CPrintToChat(target, "%s%T",PREFIX, "You are SprayBanned Reply", target);
 
-	LogAction(client, iTarget, "%L Spraybanned %L. Duration %d seconds. Reason %s", client, iTarget, info.length, reason);
+	LogAction(client, target, "%L Spraybanned %L. Duration %d seconds. Reason %s", client, target, info.length, reason);
 	CShowActivity2(client, "", "%s%T", PREFIX, "SPBanned", client, clientName, targetName, duration, reason);
 
-	ClearBannedItems(iTarget);
+	ClearBannedItems(target);
 	
 	ForwardSprayBan(targetName, authTarget, clientName, authClient, time, reason);
-	
-	return Plugin_Handled;
 }
+
 
 public Action Command_SprayUnbannew(int client, int args){
 
@@ -2831,38 +2856,48 @@ public Action Command_SprayUnbannew(int client, int args){
 		return Plugin_Handled;
 	}
 
-	char query[512];
+	char query[1024];
 
 	g_Database.Format(query, sizeof(query), "\
 						UPDATE `ssh` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
 						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL", authClient, authTarget);
 
-	SQL_LockDatabase(g_Database);
-	if(!SQL_FastQuery(g_Database, query)){
-		char error[256];
-		SQL_GetError(g_Database, error, sizeof(error));
-		LogError("SQL Error: %s", error);
 
-		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
-		SQL_UnlockDatabase(g_Database);
-		return Plugin_Handled;
-	}	
+	DataPack pack = new DataPack();
+	pack.WriteCell(GetClientUserId(client));
+	pack.WriteCell(GetClientUserId(iTarget));
+	SQL_TQuery(g_Database,SQL_UnBanCallback ,query, pack);
+	return Plugin_Handled;
+}
+
+public void SQL_UnBanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
+
+	pack.Reset();
+	int clientID = pack.ReadCell();
+	int targetID = pack.ReadCell();
+	delete pack;
+
+	int client = GetClientOfUserId(clientID);
+	int target = GetClientOfUserId(targetID);
 	
-	SQL_UnlockDatabase(g_Database);
+	if (!db || error[0]) {
+		LogError("SQL error in SQL_BanCallback: %s", error);
+		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
+		return;
+	}
 
+	char targetKey[8];
+	IntToString(target, targetKey, 8);
 	SpraybansMap.Remove(targetKey);
 
 	char clientName[MAX_NAME_LENGTH];
 	GetClientName(client, clientName, sizeof(clientName));
 	char targetName[MAX_NAME_LENGTH];
-	GetClientName(iTarget, targetName, sizeof(targetName));
+	GetClientName(target, targetName, sizeof(targetName));
 	
-	CPrintToChat(iTarget, "%s%T", PREFIX, "You are UnSprayBanned Reply", iTarget);
-	LogAction(client, iTarget, "%L UnSpraybanned %L", client, iTarget);
+	CPrintToChat(target, "%s%T", PREFIX, "You are UnSprayBanned Reply", target);
+	LogAction(client, target, "%L UnSpraybanned %L", client, target);
 	CShowActivity2(client,"", "%s%T",PREFIX, "Spray Unban",client, clientName,targetName);
-
-	return Plugin_Handled;
-
 }
 
 public Action Command_SpraybanOfflinenew(int client, int args){
@@ -2895,13 +2930,13 @@ public Action Command_SpraybanOfflinenew(int client, int args){
 	pack.WriteCell(time);
 	pack.WriteString(reason);
 
-	g_Database.Query(OfflinebanCallback, query, pack);
+	SQL_TQuery(g_Database, SQL_OfflinebanCallback, query, pack);
 
 	return Plugin_Handled;
 }
-public void OfflinebanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
+public void SQL_OfflinebanCheckCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
 	if (!db || !results || error[0]){
-		LogError("CheckBan query failed. (%s)", error);
+		LogError("CheckBan query failedЖ %s", error);
 		return;
 	}
 	
@@ -2938,21 +2973,38 @@ public void OfflinebanCallback(Database db, DBResultSet results, const char[] er
 		return;
 	}
 
+	DataPack pack1 = new DataPack();
+	pack1.WriteCell(GetClientUserId(client));
+	pack1.WriteString(authTarget);
+	pack1.WriteCell(time);
+	pack1.WriteString(reason);
+
 	char query[1024];
 	g_Database.Format(query, sizeof(query), "INSERT INTO ssh (auth, created, ends, duration, reason, adminID) \
 	VALUES ('%s', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", authTarget, time, time, reason, authClient);
 
-	SQL_LockDatabase(g_Database);
-	if(!SQL_FastQuery(g_Database, query)){
-		char sError[256];
-		SQL_GetError(g_Database, sError, sizeof(sError));
-		LogError("SQL Error: %s", sError);
+	SQL_TQuery(g_Database, SQL_OfflinebanCallback, query, pack1);
+}
 
+public void SQL_OfflinebanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
+	
+	pack.Reset();
+	int clientID = pack.ReadCell();
+	char authTarget[MAX_AUTHID_LENGTH];
+	pack.ReadString(authTarget, sizeof(authTarget));
+	char reason[64];
+	int time = pack.ReadCell();
+	pack.ReadString(reason, sizeof(reason));
+	delete pack;
+
+	int client = GetClientOfUserId(clientID);
+	char authClient[MAX_AUTHID_LENGTH];
+	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
+	
+	if (!db || error[0]){
+		LogError("OfflineBan query failed: %s)", error);
 		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
-		SQL_UnlockDatabase(g_Database);
-		return;
-	}	
-	SQL_UnlockDatabase(g_Database);
+	}
 
 	int targetClient = FindTargetSteam(authTarget);
 
@@ -2965,12 +3017,12 @@ public void OfflinebanCallback(Database db, DBResultSet results, const char[] er
 		strcopy(info.adminSteamID, sizeof(info.adminSteamID), authClient);
 		strcopy(info.auth, sizeof(info.auth), authTarget);
 		
-		char clientKey[16];
-		IntToString(targetClient, clientKey, sizeof(clientKey));
+		char targetKey[16];
+		IntToString(targetClient, targetKey, sizeof(targetKey));
 
 		SprayNullDecal(targetClient);
 		
-		SpraybansMap.SetArray(clientKey, info, sizeof(info), true);
+		SpraybansMap.SetArray(targetKey, info, sizeof(info), true);
 
 		CPrintToChat(targetClient, "%s%T",PREFIX, "You are SprayBanned Reply", targetClient);
 		char clientName[MAX_NAME_LENGTH];
@@ -3023,11 +3075,11 @@ public Action Command_SprayUnbanOfflinenew(int client, int args){
 	pack.WriteCell(GetClientUserId(client));
 	pack.WriteString(authTarget);
 
-	g_Database.Query(OfflineUnbanCallback, query, pack);
+	SQL_TQuery(g_Database,OfflineUnbanCheckCallback, query, pack);
 
 	return Plugin_Handled;
 }
-public void OfflineUnbanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
+public void OfflineUnbanCheckCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
 	if (!db || !results || error[0]){
 		LogError("CheckBan query failed. (%s)", error);
 		return;
@@ -3072,19 +3124,29 @@ public void OfflineUnbanCallback(Database db, DBResultSet results, const char[] 
 						UPDATE `ssh` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
 						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL", authClient, authTarget);
 
-	SQL_LockDatabase(g_Database);
-	if(!SQL_FastQuery(g_Database, query)){
-		char sError[256];
-		SQL_GetError(g_Database, sError, sizeof(sError));
-		LogError("SQL Error: %s", sError);
 
-		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
-		SQL_UnlockDatabase(g_Database);
-		return;
-	}	
+	SQL_TQuery(g_Database, SQL_OfflineUnBanCallback, query, pack);
+}
+
+public void SQL_OfflineUnBanCallback(Database db, DBResultSet results, const char[] error, DataPack pack) {
 	
-	SQL_UnlockDatabase(g_Database);
+	pack.Reset();
+	int clientID = pack.ReadCell();
+	char authTarget[MAX_AUTHID_LENGTH];
+	pack.ReadString(authTarget, sizeof(authTarget));
+	char reason[64];
+	pack.ReadString(reason, sizeof(reason));
+	delete pack;
 
+	int client = GetClientOfUserId(clientID);
+	char authClient[MAX_AUTHID_LENGTH];
+	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
+	
+	if (!db || error[0]){
+		LogError("OfflineUnBan query failed: %s)", error);
+		CReplyToCommand(client, "%s%T", PREFIX, "DB Error", client);
+	}
+	
 	int targetClient = FindTargetSteam(authTarget);
 
 	if (targetClient != 0){
@@ -3104,6 +3166,7 @@ public void OfflineUnbanCallback(Database db, DBResultSet results, const char[] 
 		CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,targetName);
 		return;
 	}
+	
 	char clientName[MAX_NAME_LENGTH];
 	GetClientName(client, clientName, sizeof(clientName));
 	LogAction(client, -1, "%L UnSpraybanned %s", client, authTarget);
