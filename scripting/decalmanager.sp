@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <clientprefs>
 #include <morecolors>
-#include <ssh>
+#include <decalmanager>
 #include <tf2items>
 #include <tf2attributes>
 
@@ -126,8 +126,8 @@ public Plugin myinfo = {
 //Used to create the natives for other plugins to hook into this beauty
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
 
-	g_hBanForward = CreateGlobalForward("SSH_OnBan", ET_Ignore, Param_String, Param_String,Param_String,Param_String,Param_Cell,Param_String);
-	RegPluginLibrary("ssh");
+	g_hBanForward = CreateGlobalForward("DecalManager_OnBan", ET_Ignore, Param_String, Param_String,Param_String,Param_String,Param_Cell,Param_String);
+	RegPluginLibrary("DecalManager");
 
 	g_bLate = late;
 
@@ -683,13 +683,13 @@ public void SQL_ConnectorCallback(Database db, const char[] error, any data) {
 
 	else if (StrEqual(driver, "sqlite", false)) {
 		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE  IF NOT EXISTS `ssh` ( \
-			`auth`	VARCHAR(32) NOT NULL, \
-			`name`	VARCHAR(32) DEFAULT '<unknown>', \
+			`auth`	VARCHAR(45) NOT NULL, \
+			`name`	VARCHAR(45) DEFAULT '<unknown>', \
 			`banID`	INTEGER, \
 			`created`	INTEGER NOT NULL, \
 			`duration`	INTEGER NOT NULL, \
 			`ends`	INTEGER NOT NULL, \
-			`adminID`	VARCHAR(32) NOT NULL, \
+			`adminID`	VARCHAR(45) NOT NULL, \
 			`reason`	VARCHAR(64), \
 			`removedType` varchar(1) DEFAULT NULL, \
 			`removedBy` varchar(45) NULL, \
@@ -1339,9 +1339,9 @@ void AllSprayBansCallback(Database db, DBResultSet results, const char[] error, 
 public int MenuHandler_AllSpraybans(Menu menu, MenuAction action, int param1, int param2) {
 	switch (action) {
 		case MenuAction_Select: {
-			char infoBuf[256], temp[7][32], name[MAX_NAME_LENGTH];
+			char infoBuf[256], temp[7][64], name[MAX_NAME_LENGTH];
 			menu.GetItem(param2, infoBuf, sizeof(infoBuf));
-			ExplodeString(infoBuf, ";", temp, 7, 32);
+			ExplodeString(infoBuf, ";", temp, 7, 64);
 			
 			//SELECT `auth`, `name`, `created`, `ends`, `duration`, `adminID`, `reason` 
 			SprayBan banInfo;
@@ -1434,7 +1434,7 @@ public Action Command_TraceSpray(int client, int args) {
 }
 
 //Crashes the client on some servers
-void showTraceSquare(float vec[3], int client, int lookingclient){
+stock void showTraceSquare(float vec[3], int client, int lookingclient){
 	// get normal angle for this spray
 	float vnormal[3];
 	vnormal = NormalForSpray[client];
@@ -2094,9 +2094,11 @@ public bool GoSpray(int client, int target) {
 }
 
 //Called to spray a players decal. Used for admin spray.
-void SprayDecal(int client, int entIndex, float vecPos[3], bool checkValid=true)
+void SprayDecal(int client, int entIndex, float vecPos[3])
 {
-	if (checkValid && !IsValidClient(client))
+	char clientKey[8];
+	IntToString(client, clientKey, sizeof clientKey);
+	if (!IsValidClient(client) || SpraybansMap.ContainsKey(clientKey))
 	{
 		return;
 	}
@@ -2110,7 +2112,10 @@ void SprayDecal(int client, int entIndex, float vecPos[3], bool checkValid=true)
 
 //Called to spray a NULL players decal. Used for deleting spray.
 void SprayNullDecal(int client){
-	if (!IsValidClient(client))
+	
+	char clientKey[8];
+	IntToString(client, clientKey, sizeof clientKey);
+	if (!IsValidClient(client) || SpraybansMap.ContainsKey(clientKey))
 	{
 		return;
 	}
@@ -2620,8 +2625,9 @@ public int HandlerNoBlock(Menu menu, MenuAction action, int client, int itemNum)
 
 void ShowBlockMenu(int client, SprayBan blockInfo, const char[] nameOffline = ""){
 	Panel panel = new Panel();
-	panel.SetTitle("Информация о блокировке спреев\n \n");
-
+	
+	
+	char title[64];
 	char nameField[64];
 	char authField[MAX_AUTHID_LENGTH];
 	char admName[64];
@@ -2635,15 +2641,17 @@ void ShowBlockMenu(int client, SprayBan blockInfo, const char[] nameOffline = ""
 	char endDateField[64];
 	char s_timeLeft[64];
 	char timeLeftField[64];
+
+	FormatEx(title, sizeof(title), "%T", "ShowBlockMenu_Title", client);
+	panel.SetTitle(title);
 	
 	int timeLeft = blockInfo.endTime - GetTime();
-	
 	int iTarget = FindTargetSteam(blockInfo.auth);
 
 	if (nameOffline[0])
-		FormatEx(nameField,sizeof(nameField),"Имя: %s", nameOffline);
+		FormatEx(nameField,sizeof(nameField),"%T%s", "ShowBlockMenu_Name", client, nameOffline);
 	else 
-		(iTarget<=0) ? FormatEx(nameField,sizeof(nameField),"Имя: <unknown>") : FormatEx(nameField,sizeof(nameField),"Имя: %N", iTarget);
+		(iTarget<=0) ? FormatEx(nameField,sizeof(nameField),"%T", "ShowBlockMenu_NoName", client) : FormatEx(nameField,sizeof(nameField),"%T%N","ShowBlockMenu_Name", client, iTarget);
 	
 	panel.DrawText(nameField);
 
@@ -2652,27 +2660,27 @@ void ShowBlockMenu(int client, SprayBan blockInfo, const char[] nameOffline = ""
 	
 	AdminId admID = FindAdminByIdentity("steam", blockInfo.adminSteamID);
 	admID.GetUsername(admName, sizeof(admName));
-	FormatEx(admField, sizeof(admField), "Заблокировал: %s", admName);
+	FormatEx(admField, sizeof(admField), "%T", "ShowBlockMenu_BlockedBy", client, admName);
 	panel.DrawText(admField);
 	
-	FormatDuration(blockInfo.length, duration, sizeof(duration));
-	FormatEx(durationField, sizeof(durationField), "Длительность: %s", duration);
+	FormatDuration(client, blockInfo.length, duration, sizeof(duration));
+	FormatEx(durationField, sizeof(durationField), "%T","ShowBlockMenu_Duration", client, duration);
 	panel.DrawText(durationField);
 
-	FormatEx(reasonField, sizeof(reasonField), "Причина: %s", blockInfo.reason);
+	FormatEx(reasonField, sizeof(reasonField), "%T","ShowBlockMenu_Reason", client, blockInfo.reason);
 	panel.DrawText(reasonField);
 
-	FormatTime(createDate, sizeof(createDate), "%d.%m.%Y в %H:%M:%S", blockInfo.startTime);
-	FormatEx(createDateField, sizeof(createDateField), "Дата Блокировки: %s", createDate);
+	FormatTime(createDate, sizeof(createDate), "%d.%m.%Y %H:%M:%S", blockInfo.startTime);
+	FormatEx(createDateField, sizeof(createDateField), "%T","ShowBlockMenu_BanDate", client, createDate);
 	panel.DrawText(createDateField);
 
 	if (blockInfo.length>0){
-		FormatTime(endDate, sizeof(endDate), "%d.%m.%Y в %H:%M:%S", blockInfo.endTime);
-		FormatEx(endDateField, sizeof(endDateField), "Дата Окончания: %s", endDate);
+		FormatTime(endDate, sizeof(endDate), "%d.%m.%Y %H:%M:%S", blockInfo.endTime);
+		FormatEx(endDateField, sizeof(endDateField), "%T","ShowBlockMenu_ExpireDate", client, endDate);
 		panel.DrawText(endDateField);
 
-		FormatDuration(timeLeft, s_timeLeft, sizeof(s_timeLeft));
-		FormatEx(timeLeftField, sizeof(timeLeftField), "Осталось: %s \n \n", s_timeLeft);
+		FormatDuration(client, timeLeft, s_timeLeft, sizeof(s_timeLeft));
+		FormatEx(timeLeftField, sizeof(timeLeftField), "%T","ShowBlockMenu_TimeRemaining", client, s_timeLeft);
 		panel.DrawText(timeLeftField);
 	}
 
@@ -2759,12 +2767,12 @@ public Action Command_SpraybanNew(int client, int args){
 	GetClientName(iTarget, targetName, sizeof targetName);
 	GetClientName(client, clientName, sizeof clientName);
 	char duration[32];
-	FormatDuration(info.length, duration, sizeof duration);
+	FormatDuration(client, info.length, duration, sizeof duration);
 
 	CPrintToChat(iTarget, "%s%T",PREFIX, "You are SprayBanned Reply", iTarget);
 
 	LogAction(client, iTarget, "%L Spraybanned %L. Duration %d seconds. Reason %s", client, iTarget, info.length, reason);
-	CShowActivity2(client,"", "%s%T", PREFIX, "SPBanned",client, clientName,targetName, duration, reason);
+	CShowActivity2(client, "", "%s%T", PREFIX, "SPBanned", client, clientName, targetName, duration, reason);
 
 	ClearBannedItems(iTarget);
 	
@@ -3102,58 +3110,53 @@ public void OfflineUnbanCallback(Database db, DBResultSet results, const char[] 
 	CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,authTarget);
 }
 
-void FormatDuration(int seconds, char[] buffer, int bufferSize){
-	
-	if (seconds <= 0){
-		Format(buffer, bufferSize, "Навсегда");
-		return;
-	}
+void FormatDuration(int client, int seconds, char[] buffer, int bufferSize)
+{
+    if (seconds <= 0)
+    {
+        Format(buffer, bufferSize, "%T", "Time_Never", client);
+        return;
+    }
     
-	int days = seconds / 86400;
-	int hours = (seconds % 86400) / 3600;
-	int minutes = (seconds % 3600) / 60;
-	int secs = seconds % 60;
-
-	char tempBuffer[128];
-	buffer[0] = '\0';
-
-	if (days > 0)
-	{
-	    Format(tempBuffer, sizeof(tempBuffer), "%dд", days);
-	    StrCat(buffer, bufferSize, tempBuffer);
-	}
-
-	if (hours > 0)
-	{
-	    if (strlen(buffer) > 0)
-	    {
-	        StrCat(buffer, bufferSize, " ");
-	    }
-	    Format(tempBuffer, sizeof(tempBuffer), "%dч", hours);
-	    StrCat(buffer, bufferSize, tempBuffer);
-	}
-
-	if (minutes > 0)
-	{
-	    if (strlen(buffer) > 0)
-	    {
-	        StrCat(buffer, bufferSize, " ");
-	    }
-	    Format(tempBuffer, sizeof(tempBuffer), "%dм", minutes);
-	    StrCat(buffer, bufferSize, tempBuffer);
-	}
-
-	if (secs > 0 || strlen(buffer) == 0)
-	{
-	    if (strlen(buffer) > 0)
-	    {
-	        StrCat(buffer, bufferSize, " ");
-	    }
-	    Format(tempBuffer, sizeof(tempBuffer), "%dс", secs);
-	    StrCat(buffer, bufferSize, tempBuffer);
-	}
+    int days = seconds / 86400;
+    int hours = (seconds % 86400) / 3600;
+    int minutes = (seconds % 3600) / 60;
+    int secs = seconds % 60;
     
-	TrimString(buffer);
+    char tempBuffer[128];
+    buffer[0] = '\0';
+    
+    if (days > 0)
+    {
+        Format(tempBuffer, sizeof(tempBuffer), "%T", "Time_Days", client, days);
+        StrCat(buffer, bufferSize, tempBuffer);
+    }
+    
+    if (hours > 0)
+    {
+        if (strlen(buffer) > 0)
+            StrCat(buffer, bufferSize, " ");
+        Format(tempBuffer, sizeof(tempBuffer), "%T", "Time_Hours", client, hours);
+        StrCat(buffer, bufferSize, tempBuffer);
+    }
+    
+    if (minutes > 0)
+    {
+        if (strlen(buffer) > 0)
+            StrCat(buffer, bufferSize, " ");
+        Format(tempBuffer, sizeof(tempBuffer), "%T", "Time_Minutes", client, minutes);
+        StrCat(buffer, bufferSize, tempBuffer);
+    }
+    
+    if (secs > 0 || strlen(buffer) == 0)
+    {
+        if (strlen(buffer) > 0)
+            StrCat(buffer, bufferSize, " ");
+        Format(tempBuffer, sizeof(tempBuffer), "%T", "Time_Seconds", client, secs);
+        StrCat(buffer, bufferSize, tempBuffer);
+    }
+    
+    TrimString(buffer);
 }
 
 
@@ -3218,32 +3221,18 @@ int FindTargetSteam(const char[] sSteamID){
 	return 0;
 }
 
-//Removes the decals from the items: objector, flairs etc..
-public Action TF2Items_OnGiveNamedItem(int iClient, char[] sClassName, int iItemDefinitionIndex, Handle &hItem) {
-	
+//Removes decals from items when equiping: objector, flairs etc..
+public int TF2Items_OnGiveNamedItem_Post(int iClient, char[] sClassName, int iItemDefinitionIndex, int iItemLevel, int iItemQuality, int iEntityIndex) {
+
 	char clientKey[8];
 	IntToString(iClient, clientKey, 8);
 	if (!SpraybansMap.ContainsKey(clientKey))
-		return Plugin_Continue;
+		return;
 
 	if(iItemDefinitionIndex == 474 || iItemDefinitionIndex == 619 || iItemDefinitionIndex == 623 || iItemDefinitionIndex == 624) {
-		static Handle hItemHandleCopy = INVALID_HANDLE;
 
-		if (hItemHandleCopy != INVALID_HANDLE) {
-			CloseHandle(hItemHandleCopy);
-			hItemHandleCopy = INVALID_HANDLE;
-		}
-
-		hItem = TF2Items_CreateItem(OVERRIDE_ALL);		
-		TF2Items_SetClassname(hItem, sClassName);
-		TF2Items_SetItemIndex(hItem, iItemDefinitionIndex);
-		TF2Items_SetNumAttributes(hItem, 2);
-		TF2Items_SetAttribute(hItem, 0, 227, view_as<float>(548814534));
-		TF2Items_SetAttribute(hItem, 0, 152, view_as<float>(1656248994));
-		
-		
-		TF2Items_SetFlags(hItem, OVERRIDE_ATTRIBUTES);
-		hItemHandleCopy = hItem;
+		TF2Attrib_SetByDefIndex(iEntityIndex, 227, view_as<float>(0));
+		TF2Attrib_SetByDefIndex(iEntityIndex, 152, view_as<float>(0));
 
 		SprayBan info;
 		SpraybansMap.GetArray(clientKey, info, sizeof(info));
@@ -3252,10 +3241,7 @@ public Action TF2Items_OnGiveNamedItem(int iClient, char[] sClassName, int iItem
 			SpraybansMap.SetArray(clientKey, info, sizeof(info), true);
 			RequestFrame(Notify_ItemChange, EntIndexToEntRef(iClient));
 		}
-		return Plugin_Changed;
-
 	}
-	return Plugin_Continue;
 }
 
 public Action Command_ClearDecals(int client, int args) {
@@ -3273,6 +3259,7 @@ public Action Command_ClearDecals(int client, int args) {
 		return Plugin_Handled;
 	
 	ClearBannedItems(targetClient);
+
 	char clientName[MAX_NAME_LENGTH], targetName[MAX_NAME_LENGTH];
 	GetClientName(targetClient, targetName, sizeof(targetName));
 	GetClientName(client, clientName, sizeof(clientName));
@@ -3303,12 +3290,13 @@ void ClearBannedItems(int target){
 			}
 		}
 	}
+	
 	int wepEnt = GetPlayerWeaponSlot(target, 2);
 	int wepIndex = GetEntProp(wepEnt, Prop_Send, "m_iItemDefinitionIndex");
 	if (wepIndex != 474)
 		return;
 	TF2Attrib_SetByDefIndex(wepEnt, 227, view_as<float>(0));
-	TF2Attrib_SetByDefIndex(wepEnt, 152, view_as<float>(0));	
+	TF2Attrib_SetByDefIndex(wepEnt, 152, view_as<float>(0));
 }
 
 void ClearBannedItems_CreateTimer(int target) {
@@ -3344,7 +3332,8 @@ public Action ClearBannedItems_TimerCallback(Handle timer, int target){
 	}
 	return Plugin_Stop;
 }
-public void Notify_ItemChange(any ref) {
+
+void Notify_ItemChange(any ref) {
 	int iClient = EntRefToEntIndex(ref);
 	if(iClient == INVALID_ENT_REFERENCE)
 		return;

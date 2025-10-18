@@ -1,7 +1,7 @@
-#if defined _ssh_included
+#if defined _decalmanager_included
 	#endinput
 #endif
-#define _ssh_included
+#define _decalmanager_included
 #pragma newdecls required
 
 /**
@@ -16,12 +16,12 @@
  *
  * @noreturn
  */
-forward void SSH_OnBan(char[] userName, char[] userAuth, char[] adminName, char[] adminAuth, int time, char[] reason);
+forward void DecalManager_OnBan(char[] userName, char[] userAuth, char[] adminName, char[] adminAuth, int time, char[] reason);
 
 public SharedPlugin __pl_ranking =
 {
-	name = "ssh",
-	file = "supersprayhandler.smx",
+	name = "DecalManager",
+	file = "decalmanager.smx",
 	#if defined REQUIRE_PLUGIN
 	required = 1,
 	#else

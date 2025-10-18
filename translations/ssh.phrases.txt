@@ -44,7 +44,7 @@
 	{
 		"#format"		"{1:d}"
 		"en"			"Burn Player for {1} seconds"
-		"ru"			"Поджег игрока на {1} секунд"
+		"ru"			"Поджечь игрока на {1} секунд"
 	}
 
 	//Punishment option
@@ -227,8 +227,8 @@
 	"Player is Spray Banned"
 	{
 		"#format"		"{1:s}"
-		"en"			"Error applying {1} spray. Player is spraybanned"
-		"ru"			"Не удалось нанести спрей игрока {1}. У игрока заблокированы спреи"
+		"en"			"Error applying {orange}{1} {plum}spray. Player is spraybanned"
+		"ru"			"Не удалось нанести спрей игрока {orange}{1}{plum}. У игрока заблокированы спреи"
 	}
 
 	//Punishment reply
@@ -236,16 +236,16 @@
 	"Could Not Find Name"
 	{
 		"#format"		"{1:s}"
-		"en"			"Could not find player {1}"
-		"ru"			"Не удалось найти игрока {1}"
+		"en"			"Could not find player {orange}{1}"
+		"ru"			"Не удалось найти игрока {orange}{1}"
 	}
 
 	//Punishment annoucement
 	"Warned"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"{1} warned player {2} for a bad spray logo"
-		"ru"			"{1} предупредил игрока {2} за спрей нарушающий правила"
+		"en"			"{orange}{1} {plum}warned player {orange}{2} {plum}for a bad spray logo"
+		"ru"			"{orange}{1} {plum}предупредил игрока {orange}{2} {plum}за спрей нарушающий правила"
 	}
 
 	//Punishment annoucement
@@ -253,32 +253,32 @@
 	"Slapped And Warned"
 	{
 		"#format"		"{1:s},{2:s},{3:d}"
-		"en"			"{1} Slapped and warned player {2} for {3} dmg"
-		"ru"			"{1} Шлёпнул и предупредил игрока {2} на {3} урона"
+		"en"			"{orange}{1} {plum}slapped and warned player {orange}{2} {plum}for {3} dmg"
+		"ru"			"{orange}{1} {plum}шлёпнул и предупредил игрока {orange}{2} {plum}на {3} урона"
 	}
 
 	//Punishment annoucement
 	"Slayed And Warned"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"{1} Slayed and warned player {2}"
-		"ru"			"{1} Убил и предупредил игрока {2}"
+		"en"			"{orange}{1} {plum}slayed and warned player {orange}{2}"
+		"ru"			"{orange}{1} {plum}убил и предупредил игрока {orange}{2}"
 	}
 
 	//Punishment annoucement
 	"Burnt And Warned"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"{1} Burnt and warned player {2}"
-		"ru"			"{1} Поджег и предупредил игрока {2}"
+		"en"			"{orange}{1} {plum}burnt and warned player {orange}{2}"
+		"ru"			"{orange}{1} {plum}поджег и предупредил игрока {orange}{2}"
 	}
 
 	//Punishment annoucement
 	"Froze"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"{1} Froze player {2}"
-		"ru"			"{1} Заморозил игрока {2}"
+		"en"			"{orange}{1} {plum}froze player {orange}{2}"
+		"ru"			"{orange}{1} {plum}заморозил игрока {orange}{2}"
 	}
 
 	//Punishment annoucement
@@ -286,8 +286,8 @@
 	"Beaconed"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"{1} Put a beacon on player {2}"
-		"ru"			"{1} Установил маяк на игрока {2})"
+		"en"			"{orange}{1} {plum}put a beacon on player {orange}{2}"	
+		"ru"			"{orange}{1} {plum}установил маяк на игрока {orange}{2})"
 	}
 
 	//Punishment annoucement
@@ -295,8 +295,8 @@
 	"FreezeBombed"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Put a freeze bomb on player {1} ({2})"
-		"ru"			"Установил замораживающую бомбу на игрока {1} ({2})"
+		"en"			"{orange}{1} {plum}put a freeze bomb on player {orange}{2}"
+		"ru"			"{orange}{1} {plum}установил замораживающую бомбу на игрока {orange}{2}"
 	}
 
 	//Punishment annoucement
@@ -304,8 +304,8 @@
 	"FireBombed"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Put a fire bomb on player {1} ({2})"
-		"ru"			"Установил огненную бомбу на игрока {1} ({2})"
+		"en"			"{orange}{1} {plum}put a fire bomb on player {orange}{2}"
+		"ru"			"{orange}{1} {plum}установил огненную бомбу на игрока {orange}{2}"
 	}
 
 	//Punishment annoucement
@@ -313,8 +313,8 @@
 	"TimeBombed"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Put a time bomb on player {1} ({2})"
-		"ru"			"Установил бомбу с таймером на игрока {1} ({2})"
+		"en"			"{orange}{1} {plum}put a time bomb on player {orange}{2}"
+		"ru"			"{orange}{1} {plum}установил бомбу с таймером на игрока {orange}{2}"
 	}
 
 	//Punishment message
@@ -322,8 +322,8 @@
 	"Drugged"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Drugged player {1} ({2})"
-		"ru"			"Опьянил игрока {1} ({2})"
+		"en"			"{orange}{1} {plum}drugged player {orange}{2}"
+		"ru"			"{orange}{1} {plum}опьянил игрока {orange}{2}"
 	}
 
 	//Punishment annoucement
@@ -331,8 +331,8 @@
 	"Kicked"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"Kicked player {1} ({2}) for a bad spray logo"
-		"ru"			"Кикнул игрока {1} ({2}) за спрей нарушаюший правила"
+		"en"			"{orange}{1} {plum}kicked player {orange}{2} {plum}for a bad spray logo"
+		"ru"			"{orange}{1} {plum}кикнул игрока {orange}{2} {plum}за спрей нарушаюший правила"
 	}
 
 	
@@ -341,8 +341,8 @@
 	"SPBanned"
 	{
 		"#format"	"{1:s},{2:s},{3:s}, {4:s}"
-		"en"	"{orange}{1} {plum}spraybanned player {unique}{2} {plum}for {3}. Reason: {orange}{4}"
-		"ru"	"{orange}{1} {plum}заблокировал игроку {unique}{2} {plum}нанесение спреев на {3}. Причина: {orange}{4}"
+		"en"	"{orange}{1} {plum}spraybanned player {orange}{2} {plum}for {orange}{3}{plum}. Reason: {orange}{4}"
+		"ru"	"{orange}{1} {plum}заблокировал игроку {orange}{2} {plum}нанесение спреев на {orange}{3}{plum}. Причина: {orange}{4}"
 	}
 
 	"You are SprayBanned Reply"
@@ -363,30 +363,12 @@
 	}
 
 	//Command reply
-	//Sprayed by: {Name} ({SteamID})
-	"Sprayed"
-	{
-		"#format"		"{1:s},{2:s}"
-		"en"			"Sprayed by: {1} ({2})"
-		"ru"			"Спрей игрока: {1} ({2})"
-	}
-
-	//Command reply
-	//Sprayed by: {Name}
-	"Sprayed Name"
-	{
-		"#format"		"{1:s}"
-		"en"			"Sprayed by: {1}"
-		"ru"			"Спрей игрока: {1}"
-	}
-
-	//Command reply
 	//{AdminName} sprayed {Target}'s spray
 	"Admin Sprayed"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"{1} sprayed {2}'s spray"
-		"ru"			"{1} нанёс спрей игрока {2}"
+		"en"			"{orange}{1} {plum}sprayed {orange}{2}'s {plum}spray"
+		"ru"			"{orange}{1} {plum}нанёс спрей игрока {orange}{2}"
 	}
 
 	//Command Reply
@@ -401,8 +383,8 @@
 	"Spray By"
 	{
 		"#format"		"{1:s},{2:d}"
-		"en"			"Spray by {1}, {2} seconds ago"
-		"ru"			"Спрей игрока {1}, {2} секунд назад"
+		"en"			"Spray by {orange}{1}{plum}, {orange}{2} {plum}seconds ago"
+		"ru"			"Спрей игрока {orange}{1}{plum}, {orange}{2} {plum}секунд назад"
 	}
 
 	//Command reply
@@ -424,8 +406,8 @@
 	"Spray Removed"
 	{
 		"#format"		"{1:s},{2:s}"
-		"en"			"{1}'s spray has been removed by {2}"
-		"ru"			"Спрей игрока {1} был удален администратором {2}"
+		"en"			"{orange}{1}'s {plum}spray has been removed by {orange}{2}"
+		"ru"			"Спрей игрока {orange}{1}{plum} был удален администратором {orange}{2}"
 	}
 	
 	//Command reply
@@ -442,8 +424,8 @@
 	"Admin Immune"
 	{
 		"#format"		"{1:s}"
-		"en"			"You tried to punish {1} but failed. {1} has higher immunity."
-		"ru"			"Вы пытались совершить действие над {1}, но {1} имеет более высокий иммунитет."
+		"en"			"You tried to punish {orange}{1}{plum} but failed. {orange}{1}{plum} has higher immunity."
+		"ru"			"Вы пытались совершить действие над {orange}{1}{plum}, но {orange}{1}{plum} имеет более высокий иммунитет."
 	}
 	"HUD Spray"
 	{
@@ -459,14 +441,14 @@
 	"Already Spraybanned"
 	{
 		"#format"		"{1:s}"
-		"en"			"Unable to spray ban {1}, reason - already spray banned"
-		"ru"			"У игрока {1} уже есть блокировка спреев"
+		"en"			"Unable to spray ban {orange}{1}{plum}, reason - already spray banned"
+		"ru"			"У игрока {orange}{1}{plum} уже есть блокировка спреев"
 	}
 	"No Sprayban"
 	{
 		"#format"		"{1:s}"
-		"en"			"Unable to spray unban {1}, reason - not spraybanned"
-		"ru"			"У игрока {1} нет блокировки спреев"
+		"en"			"Unable to spray unban {orange}{1}{plum}, reason - not spraybanned"
+		"ru"			"У игрока {orange}{1}{plum} нет блокировки спреев"
 	}
 	"DB Error"
 	{
@@ -476,35 +458,116 @@
 	"Cant Unban Admin Immun"
 	{
 		"#format"		"{1:s}"
-		"en" 	"Unable to unsprayban {1}. Ban was issued by admin with higher immunity that yours"
-		"ru" 	"Невозможно разблокировать спреи {1}. Блокировка была выдана администратором с более высоким иммунитетом"
+		"en" 	"Unable to unsprayban {orange}{1}{plum}. Ban was issued by admin with higher immunity that yours"
+		"ru" 	"Невозможно разблокировать спреи {orange}{1}{plum}.	Блокировка была выдана администратором с более высоким иммунитетом"
 	}
 	"Cant Ban Admin Immun"
 	{
 		"#format"		"{1:s}"
-		"en" 	"Unable to sprayban {1}. Target has higher immunity than yours"
-		"ru" 	"Невозможно заблокировать спреи {1}. Иммунинтет цели выше вашего"
+		"en" 	"Unable to sprayban {orange}{1}{plum}. Target has higher immunity than yours"
+		"ru" 	"Невозможно заблокировать спреи {orange}{1}{plum}. Иммунинтет цели выше вашего"
 	}
 	"Spray Unban"
 	{
 		"#format"		"{1:s}{2:s}"
-		"en"			"{1} Unbanned spraying for {2}"
-		"ru"			"{1} Разблокировал игроку {2} нанесение спреев"
+		"en"			"{orange}{1}{plum} unbanned spraying for {orange}{2}"
+		"ru"			"{orange}{1}{plum} разблокировал игроку {orange}{2}{plum} нанесение спреев"
 	}
 	"Ban expired"
 	{
 		"en"			"Your sprayban has expired!"
-		"ru"			"Ваша блокировка спрея истекла!"
+		"ru"			"Ваша блокировка спреев истекла!"
 	}
 	"Notify Decalban"
 	{
-		"ru"			"Вы были заблокированы и не можете использовать изображения на предметах. Пропишите {orange}!spraystatus {plum}чтобы узнать подробности"
+		"ru"			"Вы были заблокированы и не можете использовать изображения на предметах. Пропишите {orange}!spraystatus {plum}для подробностей"
 		"en"			"You are decal banned and can't use items decals. Type {orange}!spraystatus {plum} for more info"
 	}
 	"Admin Cleared Decals"
 	{
 		"#format"		"{1:s}{2:s}"
-		"en"			"{1} cleared all decal items for {2}"
-		"ru"			"{1} удалил все изображения на предметах игроку {2}"
+		"en"			"{orange}{1}{plum} cleared all decal items for {orange}{2}"
+		"ru"			"{orange}{1}{plum} удалил все изображения на предметах игроку {orange}{2}"
+	}
+
+	"Forever"
+    {
+        "en"    "Permanent"
+        "ru"    "Навсегда"
+    }
+    "Time_Days"
+    {
+        "#format"   "{1:d}"
+        "en"        "{1}d"
+        "ru"        "{1}д"
+    }
+    "Time_Hours"
+    {
+        "#format"   "{1:d}"
+        "en"        "{1}h"
+        "ru"        "{1}ч"
+    }
+    "Time_Minutes"
+    {
+        "#format"   "{1:d}"
+        "en"        "{1}m"
+        "ru"        "{1}м"
+    }
+    "Time_Seconds"
+    {
+        "#format"   "{1:d}"
+        "en"        "{1}s"
+        "ru"        "{1}с"
+    }
+	"ShowBlockMenu_Title"
+	{
+		"en"			"SprayBan Info\n \n"
+		"ru"			"Информация о блокировке спреев\n \n"
+	}
+	"ShowBlockMenu_Name"
+	{
+		"en"			"Name: "
+		"ru"			"Имя: "
+	}
+	"ShowBlockMenu_NoName"
+	{
+		"en"			"<unknown>"
+		"ru"			"<неизвестно>"
+	}
+	"ShowBlockMenu_BlockedBy"
+	{
+		"#format"		"{1:s}"
+		"en"			"Banned by: {1}"
+		"ru"			"Заблокировал: {1}"
+	}
+	"ShowBlockMenu_Duration"
+	{
+		"#format"		"{1:s}"
+		"en"			"Duration: {1}"
+		"ru"			"Длительность: {1}"
+	}
+	"ShowBlockMenu_Reason"
+	{
+		"#format"		"{1:s}"
+		"en"			"Reason: {1}"
+		"ru"			"Причина: {1}"
+	}
+	"ShowBlockMenu_BanDate"
+	{
+		"#format"		"{1:s}"
+		"en"			"Ban Date: {1}"
+		"ru"			"Дата блокировки: {1}"
+	}
+	"ShowBlockMenu_ExpireDate"
+	{
+		"#format"		"{1:s}"
+		"en"			"Expires on: {1}"
+		"ru"			"Дата окончания: {1}"
+	}
+	"ShowBlockMenu_TimeRemaining"
+	{
+		"#format"		"{1:s}"
+		"en"			"Time remaining: {1} \n \n"
+		"ru"			"Осталось: {1} \n \n"
 	}
 }
