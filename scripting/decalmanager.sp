@@ -272,7 +272,7 @@ public void OnPluginStart() {
 //When the map starts we want to create timers, and clear any info that may have decided to stick around.
 public void OnMapStart() {
 	
-	ClearTrie(SpraybansMap);
+	SpraybansMap.Clear();
 	
 	CreateTimers();
 
@@ -298,7 +298,7 @@ public void OnClientDisconnect(int client)
 }
 
 //When a client joins we need to 1: default his spray to 0 0 0. 2: Check in the database if he is spray banned.
-public void OnClientPutInServer(int client)
+public void OnClientAuthorized(int client)
 {
 	g_fSprayVector[client] = ZERO_VECTOR;
 
@@ -320,7 +320,7 @@ public Action Timer_BanExpire(Handle timer, DataPack dataPack)
 
 	CPrintToChat(client, "%s%T", PREFIX, "Ban expired", client);
 
-	if (IsClientInGame(client)){
+	if (IsValidClient(client)){
 		char clientKey[16];
 		IntToString(client, clientKey, sizeof(clientKey));
 		SpraybansMap.Remove(clientKey);
@@ -330,8 +330,8 @@ public Action Timer_BanExpire(Handle timer, DataPack dataPack)
 }
 void CloseBanTimer(int target)
 {
-	if (g_BanExpireTimer[target] != INVALID_HANDLE && CloseHandle(g_BanExpireTimer[target]))
-		g_BanExpireTimer[target] = INVALID_HANDLE;
+	delete g_BanExpireTimer[target];
+	g_BanExpireTimer[target] = null;
 }
 void CreateBanTimer(int target, int remainingTime)
 {
@@ -428,20 +428,20 @@ Action CheckAllTraces(Handle hTimer)
 		int target = -1;
 		for (int curcl = 1; curcl <= MaxClients; curcl++)
 		{
-			// dist between our mouse and this spray
-			float dist = GetVectorDistance(vecPos, g_fSprayVector[curcl]);
+			// dist between our mouse and this spray. squared for performance
+			float distSq = GetVectorDistance(vecPos, g_fSprayVector[curcl], true);
 			float curshortestdist;
 			if
 			(
 				// our cvar dist
-				dist <= g_arrCVars[MAXDIS].FloatValue
+				distSq <= (g_arrCVars[MAXDIS].FloatValue * g_arrCVars[MAXDIS].FloatValue)
 				&&
 				// dist between our mouse and our last target
-				dist > curshortestdist
+				distSq > curshortestdist
 			)
 			{
 				target = curcl;
-				curshortestdist = dist;
+				curshortestdist = distSq;
 				continue;
 			}
 		}
@@ -710,7 +710,7 @@ public void SQL_CreateTableCallback(Database db, DBResultSet results, const char
 	if (g_bLate) {
 		for (int i = 1; i <= MaxClients; i++) {
 			if (IsValidClient(i)) {
-				OnClientPutInServer(i);
+				OnClientAuthorized(i);
 			}
 		}
 	}
@@ -2013,7 +2013,7 @@ public int MenuHandler_AdminSpray(Menu menu, MenuAction action, int param1, int 
 			char targetS[MAX_TARGET_LENGTH];
 			IntToString(target, targetS, MAX_TARGET_LENGTH);
 
-			if (target == 0 || !IsClientInGame(target)) {
+			if (target == 0 || !IsValidClient(target)) {
 				CPrintToChat(param1,"%s%T", PREFIX, "Could Not Find", param1);
 			}
 			else if (SpraybansMap.ContainsKey(targetS)) {
@@ -2264,7 +2264,7 @@ public int PunishmentMenuHandler(Menu hMenu, MenuAction action, int client, int 
 
 			
 			//Guess you selected not to ban someone, so now we do this stuff.
-			if (sprayer && IsClientInGame(sprayer)) {
+			if (sprayer && IsValidClient(sprayer)) {
 				//Uh Oh. You can't target this person. Now they're going to kill you.
 				if (!CanUserTarget(client, sprayer)) {
 					CPrintToChat(client, "%s%T", PREFIX, "Admin Immune", client, szSprayerName);
@@ -3166,7 +3166,7 @@ public void SQL_OfflineUnBanCallback(Database db, DBResultSet results, const cha
 		CShowActivity2(client,"", "%s%T", PREFIX, "Spray Unban",client, clientName,targetName);
 		return;
 	}
-	
+
 	char clientName[MAX_NAME_LENGTH];
 	GetClientName(client, clientName, sizeof(clientName));
 	LogAction(client, -1, "%L UnSpraybanned %s", client, authTarget);
@@ -3272,7 +3272,7 @@ int FindTargetSteam(const char[] sSteamID){
 	char sSteamIDs[MAX_AUTHID_LENGTH];
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (IsClientInGame(i))
+		if (IsValidClient(i))
 		{
 			GetClientAuthId(i, AuthId_Steam2, sSteamIDs, sizeof(sSteamIDs));
 			if(StrEqual(sSteamID[8], sSteamIDs[8],false))
