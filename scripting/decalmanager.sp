@@ -2607,9 +2607,13 @@ public Action Command_SprayStatus(int client, int args){
 
 void ShowNoBlockMenu(int client){
 	Panel panel = new Panel();
-	panel.SetTitle("Информация о блокировке спреев\n \n");
-	panel.DrawText("У вас нет активной блокировки \n \n");
-	panel.DrawItem("Закрыть");
+	char title[64], close[24], block[64];
+	FormatEx(title, sizeof(title), "%T", "ShowBlockMenu_Title", client);
+	panel.SetTitle(title);
+	FormatEx(block, sizeof(block), "%T", "ShowBlockMenu_NoBlock", client);
+	panel.DrawText(block);
+	FormatEx(close, sizeof(close), "%T", "ShowBlockMenu_Close", client);
+	panel.DrawItem(close);
     
 	panel.Send(client,HandlerNoBlock ,MENU_TIME_FOREVER);
 

@@ -524,6 +524,16 @@
 		"en"			"SprayBan Info\n \n"
 		"ru"			"Информация о блокировке спреев\n \n"
 	}
+	"ShowBlockMenu_Close"
+	{
+		"en"			"Close"
+		"ru"			"Закрыть"
+	}
+	"ShowBlockMenu_NoBlock"
+	{
+		"en"			"You have no active spraybans \n \n"
+		"ru"			"У вас нет активной блокировки \n \n"
+	}
 	"ShowBlockMenu_Name"
 	{
 		"en"			"Name: "
@@ -570,4 +580,5 @@
 		"en"			"Time remaining: {1} \n \n"
 		"ru"			"Осталось: {1} \n \n"
 	}
+
 }
