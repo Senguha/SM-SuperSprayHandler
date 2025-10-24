@@ -12,6 +12,8 @@
 #define MAX_COMMUNITYID_LENGTH 18 
 #define PREFIX "{violet}[Decal Manager]{plum} "
 
+#define TABLE_NAME "decalmanager" //db entry in databases.cfg and table name
+
 
 #include <tf2_stocks>
 #undef REQUIRE_PLUGIN
@@ -630,11 +632,11 @@ public void OnAdminMenuCreated(Handle aTopMenu) {
 void SQL_Connector() {
 	delete g_Database;
 
-	if (!SQL_CheckConfig("ssh")) {
-		SetFailState("PLUGIN STOPPED - Reason: No config entry found for 'ssh' in databases.cfg - PLUGIN STOPPED");
+	if (!SQL_CheckConfig(TABLE_NAME)) {
+		SetFailState("PLUGIN STOPPED - Reason: No config entry found for '%s' in databases.cfg - PLUGIN STOPPED", TABLE_NAME);
 	}
 
-	Database.Connect(SQL_ConnectorCallback, "ssh");
+	Database.Connect(SQL_ConnectorCallback, TABLE_NAME);
 }
 
 //What actually is called to establish a connection to the database.
@@ -656,16 +658,12 @@ public void SQL_ConnectorCallback(Database db, const char[] error, any data) {
 
 	g_Database = db;
 
-	DBDriver dbDriver = g_Database.Driver;
-	char driver[16];
-	dbDriver.GetIdentifier(driver, sizeof(driver));
-
-	if (StrEqual(driver, "mysql", false)) {
 		SQL_LockDatabase(g_Database);
 		SQL_FastQuery(g_Database, "SET NAMES \"UTF8\"");
 		SQL_UnlockDatabase(g_Database);
 
-		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE IF NOT EXISTS `ssh` ( \
+		char query[1024];
+		g_Database.Format(query, sizeof(query), "CREATE TABLE IF NOT EXISTS `%s` ( \
   			`banID` INT NOT NULL AUTO_INCREMENT, \
   			`auth` VARCHAR(45) NOT NULL, \
   			`name` VARCHAR(45) NULL DEFAULT '<unknown>', \
@@ -677,26 +675,8 @@ public void SQL_ConnectorCallback(Database db, const char[] error, any data) {
 			`removedType` varchar(1) DEFAULT NULL, \
 			`removedBy` varchar(45) NULL, \
 			`removedOn` INT NULL, \
-  			PRIMARY KEY (`banID`)) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;");
-	}
-
-	else if (StrEqual(driver, "sqlite", false)) {
-		g_Database.Query(SQL_CreateTableCallback, "CREATE TABLE  IF NOT EXISTS `ssh` ( \
-			`auth`	VARCHAR(45) NOT NULL, \
-			`name`	VARCHAR(45) DEFAULT '<unknown>', \
-			`banID`	INTEGER, \
-			`created`	INTEGER NOT NULL, \
-			`duration`	INTEGER NOT NULL, \
-			`ends`	INTEGER NOT NULL, \
-			`adminID`	VARCHAR(45) NOT NULL, \
-			`reason`	VARCHAR(64), \
-			`removedType` varchar(1) DEFAULT NULL, \
-			`removedBy` varchar(45) NULL, \
-			`removedOn` INT NULL, \
-			PRIMARY KEY(`banID` AUTOINCREMENT) );");
-	}
-
-	delete dbDriver;
+  			PRIMARY KEY (`banID`)) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;", TABLE_NAME);
+		g_Database.Query(SQL_CreateTableCallback, query);
 }
 
 //More SQL Stuff
@@ -741,8 +721,8 @@ void CheckBan(int client)
 
 	g_Database.Format(query, sizeof(query), "\
 	SELECT `auth`, `created`, `ends`, `duration`, `adminID`, `reason` \
-	FROM `ssh` WHERE `auth` = '%s' AND `removedType` IS NULL \
-	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", auth);
+	FROM `%s` WHERE `auth` = '%s' AND `removedType` IS NULL \
+	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", TABLE_NAME, auth);
 
 	SQL_TQuery(g_Database, sqlQuery_CheckBan, query, GetClientUserId(client));
 }
@@ -1187,8 +1167,8 @@ int MenuHandler_ListOptions(Menu menu, MenuAction action, int param1, int param2
 
 					g_Database.Format(query, sizeof(query), "\
 					SELECT `auth`, `name`, `created`, `ends`, `duration`, `adminID`, `reason` \
-					FROM `ssh` WHERE `removedType` IS NULL \
-					AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP())");
+					FROM `%s` WHERE `removedType` IS NULL \
+					AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP())", TABLE_NAME);
 					
 					SQL_TQuery(g_Database, AllSprayBansCallback, query, GetClientUserId(param1));
 				}
@@ -2734,8 +2714,8 @@ public Action Command_SpraybanNew(int client, int args){
 	}
 	
 	char query[1024];
-	g_Database.Format(query, sizeof(query), "INSERT INTO ssh (auth, name, created, ends, duration, reason, adminID) \
-	VALUES ('%s', '%N', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", authTarget, iTarget, time, time, reason, authClient);
+	g_Database.Format(query, sizeof(query), "INSERT INTO %s (auth, name, created, ends, duration, reason, adminID) \
+	VALUES ('%s', '%N', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", TABLE_NAME, authTarget, iTarget, time, time, reason, authClient);
 
 	DataPack pack = new DataPack();
 	pack.WriteCell(GetClientUserId(client));
@@ -2862,8 +2842,8 @@ public Action Command_SprayUnbannew(int client, int args){
 	char query[1024];
 
 	g_Database.Format(query, sizeof(query), "\
-						UPDATE `ssh` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
-						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL", authClient, authTarget);
+						UPDATE `%s` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
+						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL",TABLE_NAME, authClient, authTarget);
 
 
 	DataPack pack = new DataPack();
@@ -2924,8 +2904,8 @@ public Action Command_SpraybanOfflinenew(int client, int args){
 
 	g_Database.Format(query, sizeof(query), "\
 	SELECT `auth`, `created`, `ends`, `duration`, `adminID`, `reason` \
-	FROM `ssh` WHERE `auth` = '%s' AND `removedType` IS NULL \
-	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", authTarget);
+	FROM `%s` WHERE `auth` = '%s' AND `removedType` IS NULL \
+	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", TABLE_NAME, authTarget);
 
 	DataPack pack = new DataPack();
 	pack.WriteCell(GetClientUserId(client));
@@ -2983,8 +2963,8 @@ public void SQL_OfflinebanCheckCallback(Database db, DBResultSet results, const 
 	pack1.WriteString(reason);
 
 	char query[1024];
-	g_Database.Format(query, sizeof(query), "INSERT INTO ssh (auth, created, ends, duration, reason, adminID) \
-	VALUES ('%s', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", authTarget, time, time, reason, authClient);
+	g_Database.Format(query, sizeof(query), "INSERT INTO %s (auth, created, ends, duration, reason, adminID) \
+	VALUES ('%s', UNIX_TIMESTAMP(), UNIX_TIMESTAMP() + '%d', '%d', '%s', '%s');", TABLE_NAME, authTarget, time, time, reason, authClient);
 
 	SQL_TQuery(g_Database, SQL_OfflinebanCallback, query, pack1);
 }
@@ -3071,8 +3051,8 @@ public Action Command_SprayUnbanOfflinenew(int client, int args){
 
 	g_Database.Format(query, sizeof(query), "\
 	SELECT `auth`, `created`, `ends`, `duration`, `adminID`, `reason` \
-	FROM `ssh` WHERE `auth` = '%s' AND `removedType` IS NULL \
-	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", authTarget);
+	FROM `%s` WHERE `auth` = '%s' AND `removedType` IS NULL \
+	AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) LIMIT 1", TABLE_NAME , authTarget);
 
 	DataPack pack = new DataPack();
 	pack.WriteCell(GetClientUserId(client));
@@ -3095,7 +3075,6 @@ public void OfflineUnbanCheckCallback(Database db, DBResultSet results, const ch
 
 	clientID = pack.ReadCell();
 	pack.ReadString(authTarget, sizeof(authTarget));
-	delete pack;
 
 	char authResult[MAX_AUTHID_LENGTH];
 
@@ -3124,8 +3103,8 @@ public void OfflineUnbanCheckCallback(Database db, DBResultSet results, const ch
 	char query[1024];
 
 	g_Database.Format(query, sizeof(query), "\
-						UPDATE `ssh` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
-						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL", authClient, authTarget);
+						UPDATE `%s` SET `RemovedBy` = '%!s', `RemovedType` = 'U', `RemovedOn` = UNIX_TIMESTAMP() \
+						WHERE (`auth` = '%s') AND (`duration` = 0 OR `ends` > UNIX_TIMESTAMP()) AND `RemovedType` IS NULL", TABLE_NAME, authClient, authTarget);
 
 
 	SQL_TQuery(g_Database, SQL_OfflineUnBanCallback, query, pack);
@@ -3137,8 +3116,6 @@ public void SQL_OfflineUnBanCallback(Database db, DBResultSet results, const cha
 	int clientID = pack.ReadCell();
 	char authTarget[MAX_AUTHID_LENGTH];
 	pack.ReadString(authTarget, sizeof(authTarget));
-	char reason[64];
-	pack.ReadString(reason, sizeof(reason));
 	delete pack;
 
 	int client = GetClientOfUserId(clientID);
