@@ -340,7 +340,7 @@
 	//"{AdminName} Spray banned player {Name} ({SteamID}) for a bad spray logo"
 	"SPBanned"
 	{
-		"#format"	"{1:s},{2:s},{3:s}, {4:s}"
+		"#format"	"{1:s},{2:s},{3:s},{4:s}"
 		"en"	"{orange}{1} {plum}spraybanned player {orange}{2} {plum}for {orange}{3}{plum}. Reason: {orange}{4}"
 		"ru"	"{orange}{1} {plum}заблокировал игроку {orange}{2} {plum}нанесение спреев на {orange}{3}{plum}. Причина: {orange}{4}"
 	}

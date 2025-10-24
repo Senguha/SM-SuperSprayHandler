@@ -18,7 +18,7 @@
  */
 forward void DecalManager_OnBan(char[] userName, char[] userAuth, char[] adminName, char[] adminAuth, int time, char[] reason);
 
-public SharedPlugin __pl_ranking =
+public SharedPlugin __pl_decalmanager =
 {
 	name = "DecalManager",
 	file = "decalmanager.smx",

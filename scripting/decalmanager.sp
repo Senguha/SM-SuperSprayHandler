@@ -3,7 +3,6 @@
 
 #include <sourcemod>
 #include <sdktools>
-#include <clientprefs>
 #include <morecolors>
 #include <decalmanager>
 #include <tf2items>
@@ -163,7 +162,7 @@ public void OnPluginStart() {
 
 
 	// precache our sprite
-	laser = PrecacheModel("sprites/laser.vmt", true);
+	//laser = PrecacheModel("sprites/laser.vmt", true);
 
 	//We want these translations files :D
 	LoadTranslations("ssh.phrases");
@@ -3290,26 +3289,23 @@ int FindTargetSteam(const char[] sSteamID){
 
 //Removes decals from items when equiping: objector, flairs etc..
 public int TF2Items_OnGiveNamedItem_Post(int iClient, char[] sClassName, int iItemDefinitionIndex, int iItemLevel, int iItemQuality, int iEntityIndex) {
-
+	
 	char clientKey[8];
 	IntToString(iClient, clientKey, 8);
 	if (!SpraybansMap.ContainsKey(clientKey))
 		return;
-
-	if(iItemDefinitionIndex == 474 || iItemDefinitionIndex == 619 || iItemDefinitionIndex == 623 || iItemDefinitionIndex == 624) {
-
-		TF2Attrib_SetByDefIndex(iEntityIndex, 227, view_as<float>(0));
-		TF2Attrib_SetByDefIndex(iEntityIndex, 152, view_as<float>(0));
-
-		SprayBan info;
-		SpraybansMap.GetArray(clientKey, info, sizeof(info));
-		if(!info.notyfied) {
-			info.notyfied = true;
-			SpraybansMap.SetArray(clientKey, info, sizeof(info), true);
-			RequestFrame(Notify_ItemChange, EntIndexToEntRef(iClient));
-		}
+	
+	ClearDecalAttribs(iEntityIndex);
+	
+	SprayBan info;
+	SpraybansMap.GetArray(clientKey, info, sizeof(info));
+	if(!info.notyfied) {
+		info.notyfied = true;
+		SpraybansMap.SetArray(clientKey, info, sizeof(info), true);
+		RequestFrame(Notify_ItemChange, EntIndexToEntRef(iClient));
 	}
 }
+
 
 public Action Command_ClearDecals(int client, int args) {
 	
@@ -3335,6 +3331,7 @@ public Action Command_ClearDecals(int client, int args) {
 	return Plugin_Handled;
 }
 
+//Removes decal attributes from items of given player
 void ClearBannedItems(int target){
 	if (!IsPlayerAlive(target)){
 		ClearBannedItems_CreateTimer(target);
@@ -3348,22 +3345,12 @@ void ClearBannedItems(int target){
 		{
 			if (GetEntPropEnt(edict, Prop_Send, "m_hOwnerEntity") == target)
 			{
-				int index = GetEntProp(edict, Prop_Send, "m_iItemDefinitionIndex");
-				if (index == 619 || index == 623 || index == 624)
-				{
-					TF2Attrib_SetByDefIndex(edict, 227, view_as<float>(0));
-					TF2Attrib_SetByDefIndex(edict, 152, view_as<float>(0));
-				}
+				ClearDecalAttribs(edict);
 			}
 		}
 	}
-	
 	int wepEnt = GetPlayerWeaponSlot(target, 2);
-	int wepIndex = GetEntProp(wepEnt, Prop_Send, "m_iItemDefinitionIndex");
-	if (wepIndex != 474)
-		return;
-	TF2Attrib_SetByDefIndex(wepEnt, 227, view_as<float>(0));
-	TF2Attrib_SetByDefIndex(wepEnt, 152, view_as<float>(0));
+	ClearDecalAttribs(wepEnt);
 }
 
 void ClearBannedItems_CreateTimer(int target) {
@@ -3382,21 +3369,12 @@ public Action ClearBannedItems_TimerCallback(Handle timer, int target){
 		{
 			if (GetEntPropEnt(edict, Prop_Send, "m_hOwnerEntity") == target)
 			{
-				int index = GetEntProp(edict, Prop_Send, "m_iItemDefinitionIndex");
-				if (index == 619 || index == 623 || index == 624)
-				{
-					TF2Attrib_SetByDefIndex(edict, 227, view_as<float>(0));
-					TF2Attrib_SetByDefIndex(edict, 152, view_as<float>(0));
-				}
+				ClearDecalAttribs(edict);
 			}
 		}
 	}
 	int wepEnt = GetPlayerWeaponSlot(target, 2);
-	int wepIndex = GetEntProp(wepEnt, Prop_Send, "m_iItemDefinitionIndex");
-	if (wepIndex == 474){
-		TF2Attrib_SetByDefIndex(wepEnt, 227, view_as<float>(0));
-		TF2Attrib_SetByDefIndex(wepEnt, 152, view_as<float>(0));
-	}
+	ClearDecalAttribs(wepEnt);
 	return Plugin_Stop;
 }
 
@@ -3406,4 +3384,17 @@ void Notify_ItemChange(any ref) {
 		return;
 		
 	CPrintToChat(iClient, "%s%T", PREFIX, "Notify Decalban", iClient);
+}
+
+//Sets decal attributes of an item to 0 if they exist
+void ClearDecalAttribs(int iEntityIndex){
+	int SOCatribsInx[16];  float SOCatribsValues[16]; 
+	int SOCattribCount = TF2Attrib_GetSOCAttribs(iEntityIndex, SOCatribsInx, SOCatribsValues, sizeof(SOCatribsInx));
+
+	for(int i = 0; i < SOCattribCount; i++){
+		if (SOCatribsInx[i] == 152)
+			TF2Attrib_SetByDefIndex(iEntityIndex, 152, 0.0);
+		if (SOCatribsInx[i] == 227)
+			TF2Attrib_SetByDefIndex(iEntityIndex, 227, 0.0);
+	}
 }
