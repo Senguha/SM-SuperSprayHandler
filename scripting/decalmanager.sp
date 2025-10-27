@@ -675,7 +675,7 @@ public void SQL_ConnectorCallback(Database db, const char[] error, any data) {
 			`removedType` varchar(1) DEFAULT NULL, \
 			`removedBy` varchar(45) NULL, \
 			`removedOn` INT NULL, \
-  			PRIMARY KEY (`banID`)) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;", TABLE_NAME);
+  			PRIMARY KEY (`banID`)) ENGINE = InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;", TABLE_NAME);
 		g_Database.Query(SQL_CreateTableCallback, query);
 }
 
@@ -685,6 +685,7 @@ public void SQL_CreateTableCallback(Database db, DBResultSet results, const char
 		LogError(error);
 		return;
 	}
+	SQL_SetCharset(db, "utf8mb4");
 
 	if (g_bLate) {
 		for (int i = 1; i <= MaxClients; i++) {
@@ -2553,13 +2554,9 @@ public Action Command_SprayStatus(int client, int args){
 		ShowBlockMenu(client, info);
 		return Plugin_Handled;
 	}
-	char authClient[MAX_AUTHID_LENGTH];
-	GetClientAuthId(client, AuthId_Steam2, authClient, sizeof(authClient));
-	AdminId clientAdmID = FindAdminByIdentity("steam", authClient);
-	
 	
 
-	if (!GetAdminFlag(clientAdmID, Admin_Kick)){
+	if (CheckCommandAccess(client, "sm_sbans", ADMFLAG_KICK)){
 		ReplyToCommand(client, "[SM] You don't have the permission to use this command.");
 		return Plugin_Handled;
 	}
@@ -2638,11 +2635,14 @@ void ShowBlockMenu(int client, SprayBan blockInfo, const char[] nameOffline = ""
 	FormatEx(authField, sizeof(authField), "SteamID: %s", blockInfo.auth);
 	panel.DrawText(authField);
 	
-	AdminId admID = FindAdminByIdentity("steam", blockInfo.adminSteamID);
-	admID.GetUsername(admName, sizeof(admName));
-	FormatEx(admField, sizeof(admField), "%T", "ShowBlockMenu_BlockedBy", client, admName);
-	panel.DrawText(admField);
-	
+	//Only show admin name to other admins
+	if (CheckCommandAccess(client, "sm_sbans", ADMFLAG_KICK)){
+		AdminId admID = FindAdminByIdentity("steam", blockInfo.adminSteamID);
+		admID.GetUsername(admName, sizeof(admName));
+		FormatEx(admField, sizeof(admField), "%T", "ShowBlockMenu_BlockedBy", client, admName);
+		panel.DrawText(admField);
+	}
+
 	FormatDuration(client, blockInfo.length, duration, sizeof(duration));
 	FormatEx(durationField, sizeof(durationField), "%T","ShowBlockMenu_Duration", client, duration);
 	panel.DrawText(durationField);
